@@ -13,15 +13,28 @@ and the ML model file can be reused in a future Android app with minimal effort.
 
 ---
 
-## Quick start (Windows / Linux / macOS)
+## Quick start — Windows (double-click)
+
+```bat
+git clone https://github.com/benf22/Breathing-monitor.git
+cd Breathing-monitor
+```
+
+Then, in the cloned folder:
+
+1. Double-click **`setup.bat`** once — creates a virtual environment named
+   `breathing-monitor` and installs everything.
+2. Double-click **`run.bat`** to start the app (a browser opens at
+   http://127.0.0.1:8000).
+3. Optional: double-click **`create_desktop_shortcut.bat`** to add a
+   "Breathing Monitor" icon to your Desktop.
+
+## Quick start — manual (Windows / Linux / macOS)
 
 ```bash
-git clone <your-repo-url>
-cd Breathing-monitor
-
-python -m venv .venv
-# Windows:  .venv\Scripts\activate
-# macOS/Linux: source .venv/bin/activate
+python -m venv breathing-monitor
+# Windows:  breathing-monitor\Scripts\activate
+# macOS/Linux: source breathing-monitor/bin/activate
 
 pip install -r requirements.txt
 python main.py

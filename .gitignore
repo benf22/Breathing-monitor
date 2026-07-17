@@ -17,6 +17,7 @@ __pycache__/
 .venv/
 venv/
 env/
+breathing-monitor/
 .pytest_cache/
 .mypy_cache/
 
