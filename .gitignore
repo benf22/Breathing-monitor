@@ -1,0 +1,27 @@
+# Downloaded ML model (fetched on first run)
+models/
+
+# Runtime output: debug frames, snapshots, metadata logs, stats
+debug/
+data/
+*.jsonl
+*.csv
+
+# Local user settings (defaults live in code; this is the user's overrides)
+settings.local.json
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+env/
+.pytest_cache/
+.mypy_cache/
+
+# OS / editor
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/

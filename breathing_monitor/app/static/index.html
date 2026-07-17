@@ -1,0 +1,194 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Breathing Monitor</title>
+<style>
+  :root { --bg:#0f1720; --panel:#182430; --fg:#e6edf3; --muted:#8b98a5;
+          --open:#2ecc71; --closed:#f39c12; --unknown:#e74c3c; }
+  * { box-sizing:border-box; }
+  body { margin:0; font-family:system-ui,Segoe UI,Roboto,sans-serif;
+         background:var(--bg); color:var(--fg); }
+  header { padding:16px 24px; border-bottom:1px solid #22303c;
+           display:flex; align-items:center; justify-content:space-between; }
+  h1 { font-size:18px; margin:0; font-weight:600; }
+  main { display:grid; grid-template-columns:1fr 340px; gap:20px; padding:20px;
+         max-width:1100px; margin:0 auto; }
+  @media (max-width:820px){ main{ grid-template-columns:1fr; } }
+  .panel { background:var(--panel); border:1px solid #22303c; border-radius:12px;
+           padding:16px; }
+  .preview-wrap { position:relative; background:#000; border-radius:8px;
+                  overflow:hidden; aspect-ratio:4/3; display:flex;
+                  align-items:center; justify-content:center; }
+  .preview-wrap img { width:100%; height:100%; object-fit:contain; }
+  .state-badge { font-size:40px; font-weight:800; letter-spacing:1px;
+                 padding:10px 0; text-align:center; }
+  .state-open{ color:var(--open);} .state-closed{ color:var(--closed);}
+  .state-unknown{ color:var(--unknown);}
+  .metrics { display:grid; grid-template-columns:1fr 1fr; gap:10px 16px;
+             margin-top:8px; }
+  .metric .label { color:var(--muted); font-size:12px; text-transform:uppercase; }
+  .metric .value { font-size:20px; font-weight:600; }
+  h2 { font-size:14px; text-transform:uppercase; color:var(--muted);
+       margin:0 0 12px; letter-spacing:.5px; }
+  label { display:block; font-size:13px; color:var(--muted); margin:10px 0 4px; }
+  input, select { width:100%; padding:8px; border-radius:8px; border:1px solid #2c3d4c;
+                  background:#0e1620; color:var(--fg); font-size:14px; }
+  .row { display:grid; grid-template-columns:1fr 1fr; gap:10px; }
+  button { margin-top:14px; width:100%; padding:10px; border:0; border-radius:8px;
+           background:#2f81f7; color:#fff; font-weight:600; cursor:pointer;
+           font-size:14px; }
+  button.secondary { background:#2c3d4c; }
+  .btnrow { display:grid; grid-template-columns:1fr 1fr; gap:10px; }
+  .changes { max-height:180px; overflow:auto; font-size:12px; margin-top:8px; }
+  .changes div { padding:4px 0; border-bottom:1px solid #22303c; color:var(--muted); }
+  .err { color:var(--unknown); font-size:13px; min-height:18px; }
+  .ok { color:var(--open); }
+</style>
+</head>
+<body>
+<header>
+  <h1>🫁 Breathing Monitor</h1>
+  <span id="running" class="err"></span>
+</header>
+<main>
+  <section class="panel">
+    <div id="badge" class="state-badge state-unknown">—</div>
+    <div class="preview-wrap">
+      <img id="preview" alt="camera preview" />
+    </div>
+    <div class="metrics">
+      <div class="metric"><div class="label">MAR</div><div id="mar" class="value">—</div></div>
+      <div class="metric"><div class="label">Face</div><div id="face" class="value">—</div></div>
+      <div class="metric"><div class="label">Changes</div><div id="changes-count" class="value">0</div></div>
+      <div class="metric"><div class="label">Time in state</div><div id="tis" class="value">0s</div></div>
+      <div class="metric"><div class="label">Open total</div><div id="open-total" class="value">0s</div></div>
+      <div class="metric"><div class="label">Closed total</div><div id="closed-total" class="value">0s</div></div>
+    </div>
+    <h2 style="margin-top:16px">Recent changes</h2>
+    <div id="changes" class="changes"></div>
+  </section>
+
+  <aside class="panel">
+    <h2>Settings</h2>
+    <label>Camera source (index or path)</label>
+    <input id="cam-source" />
+    <div class="row">
+      <div>
+        <label>Mode</label>
+        <select id="cam-mode"><option value="camera">camera</option><option value="offline">offline</option></select>
+      </div>
+      <div>
+        <label>Backend</label>
+        <select id="cam-backend">
+          <option value="auto">auto</option><option value="dshow">dshow</option>
+          <option value="msmf">msmf</option><option value="v4l2">v4l2</option><option value="any">any</option>
+        </select>
+      </div>
+    </div>
+    <label>Capture interval (seconds)</label>
+    <input id="interval" type="number" step="0.05" />
+    <div class="row">
+      <div><label>Open threshold</label><input id="open-th" type="number" step="0.01" /></div>
+      <div><label>Close threshold</label><input id="close-th" type="number" step="0.01" /></div>
+    </div>
+    <div class="row">
+      <div><label>Min open (s)</label><input id="min-open" type="number" step="0.05" /></div>
+      <div><label>Min closed (s)</label><input id="min-closed" type="number" step="0.05" /></div>
+    </div>
+    <div class="row">
+      <div><label>Min confidence</label><input id="min-conf" type="number" step="0.05" /></div>
+      <div><label>Debug frame ratio</label><input id="debug-ratio" type="number" step="0.01" /></div>
+    </div>
+    <button id="save">Save &amp; Restart</button>
+    <div class="btnrow">
+      <button class="secondary" id="start">Start</button>
+      <button class="secondary" id="stop">Stop</button>
+    </div>
+    <div id="msg" class="err"></div>
+  </aside>
+</main>
+
+<script>
+const $ = (id) => document.getElementById(id);
+
+function applyState(state) {
+  const badge = $("badge");
+  badge.textContent = state.toUpperCase();
+  badge.className = "state-badge state-" + state;
+}
+
+async function poll() {
+  try {
+    const r = await fetch("/api/status");
+    const s = await r.json();
+    applyState(s.state || "unknown");
+    $("mar").textContent = s.mar != null ? s.mar.toFixed(3) : "—";
+    $("face").textContent = s.has_face ? "yes" : "no";
+    $("running").textContent = s.running ? "" : (s.error ? "error: " + s.error : "stopped");
+    $("running").className = s.running ? "ok" : "err";
+    const st = s.stats || {};
+    $("changes-count").textContent = st.total_changes ?? 0;
+    $("tis").textContent = (st.time_in_state_seconds ?? 0) + "s";
+    $("open-total").textContent = (st.total_open_seconds ?? 0) + "s";
+    $("closed-total").textContent = (st.total_closed_seconds ?? 0) + "s";
+    const changes = st.recent_changes || [];
+    $("changes").innerHTML = changes.slice(0, 20).map(c =>
+      `<div>${c.from} → <b>${c.to}</b> &nbsp; (held ${c.prev_duration_seconds}s)</div>`).join("");
+  } catch (e) { /* keep polling */ }
+}
+
+async function loadSettings() {
+  const r = await fetch("/api/settings");
+  const s = await r.json();
+  $("cam-source").value = s.camera.source;
+  $("cam-mode").value = s.camera.mode;
+  $("cam-backend").value = s.camera.backend;
+  $("interval").value = s.capture.interval_seconds;
+  $("debug-ratio").value = s.capture.debug_frame_ratio;
+  $("open-th").value = s.detection.open_threshold;
+  $("close-th").value = s.detection.close_threshold;
+  $("min-open").value = s.detection.min_open_seconds;
+  $("min-closed").value = s.detection.min_closed_seconds;
+  $("min-conf").value = s.detection.min_face_confidence;
+}
+
+$("save").onclick = async () => {
+  $("msg").textContent = "Saving…";
+  let src = $("cam-source").value;
+  if (/^\d+$/.test(src)) src = parseInt(src, 10);
+  const body = {
+    camera: { source: src, mode: $("cam-mode").value, backend: $("cam-backend").value },
+    capture: { interval_seconds: parseFloat($("interval").value),
+               debug_frame_ratio: parseFloat($("debug-ratio").value) },
+    detection: {
+      open_threshold: parseFloat($("open-th").value),
+      close_threshold: parseFloat($("close-th").value),
+      min_open_seconds: parseFloat($("min-open").value),
+      min_closed_seconds: parseFloat($("min-closed").value),
+      min_face_confidence: parseFloat($("min-conf").value),
+    },
+  };
+  const r = await fetch("/api/settings", { method: "POST",
+    headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+  $("msg").textContent = r.ok ? "Saved. Pipeline restarted." : "Save failed.";
+  $("msg").className = r.ok ? "ok" : "err";
+  reloadPreview();
+};
+
+$("start").onclick = () => fetch("/api/control/start", { method: "POST" });
+$("stop").onclick = () => fetch("/api/control/stop", { method: "POST" });
+
+function reloadPreview() {
+  // cache-bust the MJPEG stream so it reconnects after a restart
+  $("preview").src = "/api/preview.mjpeg?t=" + Date.now();
+}
+
+loadSettings();
+reloadPreview();
+setInterval(poll, 500);
+poll();
+</script>
+</body>
+</html>
