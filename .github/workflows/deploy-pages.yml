@@ -1,0 +1,50 @@
+name: Deploy PWA to GitHub Pages
+
+# Publishes the on-device PWA in web/ to GitHub Pages. GitHub Pages only serves
+# these static files; all camera capture and DNN inference run in the phone's
+# browser. (The cross-day Statistics tab needs the separate backend, which Pages
+# cannot host.)
+
+on:
+  push:
+    branches:
+      - main
+      - claude/mobile-algorithm-deployment-fsm4om
+    paths:
+      - "web/**"
+      - ".github/workflows/deploy-pages.yml"
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# Allow one concurrent deployment; newer pushes supersede in-progress ones.
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Configure Pages (auto-enables Pages with the Actions source)
+        uses: actions/configure-pages@v5
+        with:
+          enablement: true
+
+      - name: Upload web/ as the Pages artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: web
+
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4

@@ -9,7 +9,30 @@ This targets the **"phone on my desk watching me while I work"** use case
 (screen on). Background / screen-off monitoring is *not* possible in a browser
 and would require a native app — see the note at the bottom.
 
-## Run it
+## Install on your Android phone (simplest — GitHub Pages)
+
+Once the **Deploy PWA to GitHub Pages** workflow (`.github/workflows/deploy-pages.yml`)
+has run, the app is live at:
+
+```
+https://benf22.github.io/Breathing-monitor/
+```
+
+On the phone:
+
+1. Open that URL in **Chrome**.
+2. Tap **⋮ → Add to Home Screen** (a.k.a. *Install app*).
+3. Launch it from the new icon, tap **Start monitoring**, allow the camera.
+
+Nothing is installed on the phone beyond a home-screen shortcut — no Play Store,
+no APK, no `pip`. All capture + model inference run in the browser, on-device.
+
+> GitHub Pages serves the static app only; it can't host the central store, so
+> the **Statistics** (cross-day) tab stays empty until you run the backend
+> somewhere and point **Config → API base URL** at it. Live monitoring,
+> per-session stats, and notifications all work without a backend.
+
+## Run it locally (full features, incl. the central store)
 
 From the repo root:
 

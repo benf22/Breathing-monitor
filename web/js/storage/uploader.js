@@ -9,6 +9,9 @@
 //    every frame or any landmarks/images.
 
 const BUFFER_KEY = "bm.upload.buffer.v1";
+// Hard cap so a deployment with no reachable backend (e.g. plain GitHub Pages)
+// can't grow localStorage without bound — keep the most recent events.
+const MAX_BUFFERED = 2000;
 
 export class MetadataUploader {
   /**
@@ -113,6 +116,10 @@ export class MetadataUploader {
   }
 
   _persistBuffer() {
+    // Drop oldest events past the cap so an unreachable backend never overflows.
+    if (this._queue.length > MAX_BUFFERED) {
+      this._queue.splice(0, this._queue.length - MAX_BUFFERED);
+    }
     try {
       localStorage.setItem(BUFFER_KEY, JSON.stringify(this._queue));
     } catch {
