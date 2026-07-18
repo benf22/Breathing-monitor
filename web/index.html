@@ -1,0 +1,198 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <meta name="theme-color" content="#0f1420" />
+  <title>Breathing Monitor</title>
+  <link rel="manifest" href="./manifest.webmanifest" />
+  <link rel="icon" href="./icons/icon.svg" type="image/svg+xml" />
+  <link rel="apple-touch-icon" href="./icons/icon.svg" />
+  <link rel="stylesheet" href="./css/app.css" />
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand">
+      <span id="status-dot" class="dot"></span>
+      <strong>Breathing Monitor</strong>
+    </div>
+    <nav class="tabs">
+      <button data-tab-btn="monitor" class="active">Monitor</button>
+      <button data-tab-btn="definitions">Definitions</button>
+      <button data-tab-btn="config">Config</button>
+      <button data-tab-btn="stats">Statistics</button>
+    </nav>
+  </header>
+
+  <main>
+    <!-- MONITOR -->
+    <section data-tab="monitor" class="panel">
+      <div class="monitor-grid">
+        <div class="preview-card">
+          <canvas id="preview"></canvas>
+          <div class="preview-meta">
+            <span id="face-status">idle</span>
+            <span>MAR <b id="mar-value">—</b></span>
+          </div>
+        </div>
+
+        <div class="control-card">
+          <div id="indicator" data-state="unknown">
+            <div id="indicator-label">…</div>
+          </div>
+          <button id="toggle-btn" class="primary">Start monitoring</button>
+
+          <div class="stat-tiles">
+            <div class="tile"><span id="stat-open-pct">0%</span><label>open</label></div>
+            <div class="tile"><span id="stat-changes">0</span><label>changes</label></div>
+            <div class="tile"><span id="stat-open-s">0s</span><label>open time</label></div>
+            <div class="tile"><span id="stat-closed-s">0s</span><label>closed time</label></div>
+            <div class="tile"><span id="stat-face-rate">0%</span><label>face rate</label></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="changes-card">
+        <h3>Recent changes</h3>
+        <ul id="changes-list" class="changes-list"></ul>
+      </div>
+    </section>
+
+    <!-- DEFINITIONS -->
+    <section data-tab="definitions" class="panel" hidden>
+      <div class="doc">
+        <h2>What this measures</h2>
+        <p>The app watches your webcam, finds your face with the MediaPipe
+           <em>FaceLandmarker</em> model (478 landmarks), and computes the
+           <strong>Mouth Aspect Ratio (MAR)</strong> — the vertical lip opening
+           divided by the mouth width — to decide whether your lips are
+           <strong>open</strong> or <strong>closed</strong>. Everything runs on
+           your device; only small metadata is uploaded.</p>
+
+        <h3>Key terms</h3>
+        <dl>
+          <dt>MAR (Mouth Aspect Ratio)</dt>
+          <dd>Mean inner-lip vertical opening ÷ inner mouth width. Higher = more open.</dd>
+          <dt>Open / Close threshold (hysteresis)</dt>
+          <dd>Two separate MAR levels. Once open, the mouth must fall below the
+              lower <em>close</em> threshold to flip back — this stops flicker.</dd>
+          <dt>Minimum duration</dt>
+          <dd>A change must hold this long before it's confirmed, so brief
+              flickers (a swallow, one noisy frame) don't count.</dd>
+          <dt>Face rate</dt>
+          <dd>Fraction of sampled frames where a usable face was found.</dd>
+          <dt>% open</dt>
+          <dd>Share of measured time your mouth was open — the headline metric
+              tracked across days.</dd>
+        </dl>
+
+        <h3>How it maps to the pipeline</h3>
+        <p>Capture → foundation model (landmarks) → MAR → smoothing → stats →
+           central store. The capture + model live in one swappable
+           <code>FaceSensor</code> module; the math is ported directly from the
+           desktop app's pure-logic core.</p>
+      </div>
+    </section>
+
+    <!-- CONFIG -->
+    <section data-tab="config" class="panel" hidden>
+      <form id="config-form" class="doc form">
+        <h2>Configuration</h2>
+
+        <fieldset>
+          <legend>Capture</legend>
+          <label>Sample interval (ms)
+            <input name="intervalMs" type="number" min="50" step="10" />
+          </label>
+          <label>Camera
+            <select name="facingMode">
+              <option value="user">Front (facing you)</option>
+              <option value="environment">Rear</option>
+            </select>
+          </label>
+        </fieldset>
+
+        <fieldset>
+          <legend>Detection thresholds</legend>
+          <label>Open threshold (MAR)
+            <input name="openThreshold" type="number" step="0.01" />
+          </label>
+          <label>Close threshold (MAR)
+            <input name="closeThreshold" type="number" step="0.01" />
+          </label>
+          <label>Min open seconds
+            <input name="minOpenSeconds" type="number" step="0.05" />
+          </label>
+          <label>Min closed seconds
+            <input name="minClosedSeconds" type="number" step="0.05" />
+          </label>
+          <label>Min face confidence
+            <input name="minFaceConfidence" type="number" step="0.05" min="0" max="1" />
+          </label>
+          <label>Min face area ratio
+            <input name="minFaceAreaRatio" type="number" step="0.01" min="0" max="1" />
+          </label>
+        </fieldset>
+
+        <fieldset>
+          <legend>Notifications</legend>
+          <label class="row"><input name="notifEnabled" type="checkbox" /> Enable notifications</label>
+          <label>Mouth-open alert after (seconds, 0 = off)
+            <input name="mouthOpenAlertSeconds" type="number" step="1" min="0" />
+          </label>
+          <label>Breathing reminder every (minutes, 0 = off)
+            <input name="breathingReminderMinutes" type="number" step="1" min="0" />
+          </label>
+        </fieldset>
+
+        <fieldset>
+          <legend>Central store</legend>
+          <label class="row"><input name="uploadEnabled" type="checkbox" /> Upload metadata for cross-day stats</label>
+          <label>API base URL (blank = same server that served this page)
+            <input name="apiBase" type="text" placeholder="http://192.168.1.20:8000" />
+          </label>
+          <label>Rollup upload interval (seconds)
+            <input name="rollupSeconds" type="number" step="5" min="5" />
+          </label>
+        </fieldset>
+
+        <div class="form-actions">
+          <button type="submit" class="primary">Save settings</button>
+          <button type="button" id="config-reset" class="ghost">Reset defaults</button>
+        </div>
+      </form>
+    </section>
+
+    <!-- STATISTICS -->
+    <section data-tab="stats" class="panel" hidden>
+      <div class="doc">
+        <div class="stats-head">
+          <h2>Statistics across days</h2>
+          <button id="stats-refresh" class="ghost">Refresh</button>
+        </div>
+        <p id="stats-status" class="muted">—</p>
+
+        <div class="stat-tiles">
+          <div class="tile"><span id="agg-days">0</span><label>days</label></div>
+          <div class="tile"><span id="agg-sessions">0</span><label>sessions</label></div>
+          <div class="tile"><span id="agg-open-pct">0%</span><label>avg open</label></div>
+          <div class="tile"><span id="agg-open-hours">0h</span><label>open total</label></div>
+        </div>
+
+        <h3>Daily % mouth-open</h3>
+        <div id="daily-bars" class="daily-bars"></div>
+      </div>
+    </section>
+  </main>
+
+  <div id="toasts" class="toasts"></div>
+  <script type="module" src="./js/app.js"></script>
+  <script>
+    if ("serviceWorker" in navigator) {
+      window.addEventListener("load", () =>
+        navigator.serviceWorker.register("./sw.js").catch(() => {})
+      );
+    }
+  </script>
+</body>
+</html>

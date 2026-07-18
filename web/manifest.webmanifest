@@ -1,0 +1,19 @@
+{
+  "name": "Breathing Monitor",
+  "short_name": "Breathing",
+  "description": "On-device lip open/closed monitoring with cross-day statistics.",
+  "start_url": "./index.html",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#0f1420",
+  "theme_color": "#0f1420",
+  "icons": [
+    {
+      "src": "./icons/icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}

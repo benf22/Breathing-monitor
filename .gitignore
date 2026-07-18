@@ -6,6 +6,8 @@ debug/
 data/
 *.jsonl
 *.csv
+*.db
+*.db-journal
 
 # Local user settings (defaults live in code; this is the user's overrides)
 settings.local.json
