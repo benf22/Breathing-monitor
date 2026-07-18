@@ -5,6 +5,11 @@ import { lipLandmarkIndices } from "../core/lips.js";
 
 const LIP_INDICES = lipLandmarkIndices();
 
+// MediaPipe Face Mesh nose landmarks (bridge, tip, base and nostrils). These
+// indices are stable across the same face_landmarker.task model, like the lips.
+const NOSE_INDICES = [168, 6, 197, 195, 5, 4, 1, 19, 94, 2, 98, 97, 326, 327, 129, 358];
+const NOSE_COLOR = "#ffd166";
+
 export class PreviewRenderer {
   /** @param {HTMLCanvasElement} canvas */
   constructor(canvas) {
@@ -61,12 +66,22 @@ export class PreviewRenderer {
         bbox.width * this.canvas.width,
         bbox.height * this.canvas.height
       );
+      // Lips — colored by open/closed state.
       ctx.fillStyle = open ? "#ff5c7a" : "#39d98a";
       for (const i of LIP_INDICES) {
         const p = landmarks[i];
         if (!p) continue;
         ctx.beginPath();
         ctx.arc(p[0] * this.canvas.width, p[1] * this.canvas.height, 3, 0, Math.PI * 2);
+        ctx.fill();
+      }
+      // Nose — fixed accent color so it's distinguishable from the lips.
+      ctx.fillStyle = NOSE_COLOR;
+      for (const i of NOSE_INDICES) {
+        const p = landmarks[i];
+        if (!p) continue;
+        ctx.beginPath();
+        ctx.arc(p[0] * this.canvas.width, p[1] * this.canvas.height, 2.5, 0, Math.PI * 2);
         ctx.fill();
       }
     }

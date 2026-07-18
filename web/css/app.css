@@ -56,7 +56,29 @@ main { max-width: 900px; margin: 0 auto; padding: 16px; }
   width: 100%; display: block; border-radius: 10px; background: #000;
   aspect-ratio: 4 / 3; object-fit: cover;
 }
-.preview-meta { display: flex; justify-content: space-between; color: var(--muted); padding: 8px 6px 2px; font-size: 13px; }
+.preview-meta { display: flex; justify-content: space-between; align-items: center; gap: 8px; color: var(--muted); padding: 8px 6px 2px; font-size: 13px; }
+.legend { display: inline-flex; align-items: center; gap: 6px; }
+.legend .dot-lip, .legend .dot-nose { width: 9px; height: 9px; border-radius: 50%; display: inline-block; }
+.legend .dot-lip { background: var(--closed); box-shadow: 0 0 0 2px rgba(255,92,122,.35); }
+.legend .dot-nose { background: #ffd166; margin-left: 4px; }
+
+/* Calibrate */
+.small { font-size: 12px; }
+.cal-live { display: flex; gap: 12px; margin: 12px 0; }
+.cal-readout { flex: 1; background: var(--panel-2); border-radius: 10px; padding: 12px; text-align: center; }
+.cal-readout span { display: block; font-size: 28px; font-weight: 800; }
+.cal-readout label { color: var(--muted); font-size: 12px; }
+.cal-meter { position: relative; height: 30px; background: var(--panel-2); border-radius: 8px; margin: 22px 0 8px; overflow: visible; }
+.cal-fill { position: absolute; left: 0; top: 0; bottom: 0; width: 0%; background: linear-gradient(90deg, var(--closed), var(--open)); border-radius: 8px 0 0 8px; transition: width .08s linear; }
+.cal-mark { position: absolute; top: -6px; bottom: -6px; width: 2px; background: var(--text); left: 0%; }
+.cal-mark span { position: absolute; top: -16px; left: 50%; transform: translateX(-50%); font-size: 10px; color: var(--muted); white-space: nowrap; }
+.cal-mark-close { background: #8fb3ff; }
+.cal-mark-open { background: #ffd166; }
+.cal-controls { margin-top: 14px; }
+.cal-row { display: grid; grid-template-columns: 1fr auto; align-items: center; gap: 8px 12px; margin: 14px 0; }
+.cal-row label { color: var(--muted); }
+.cal-row input[type="range"] { grid-column: 1 / -1; width: 100%; accent-color: var(--accent); }
+.cal-row button { grid-column: 2; grid-row: 1; }
 
 .control-card { display: flex; flex-direction: column; gap: 14px; align-items: stretch; }
 #indicator {

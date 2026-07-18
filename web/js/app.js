@@ -26,6 +26,11 @@ let notifier = null;
 let preview = null;
 let rollupTimer = null;
 let statusTimer = null;
+let lastMar = null; // most recent instantaneous MAR (for Calibrate capture buttons)
+
+const MAR_SCALE = 1.0; // meter/threshold display range (MAR is ~0..0.8+)
+const round2 = (v) => Math.round(v * 100) / 100;
+const marPct = (v) => Math.max(0, Math.min(100, (v / MAR_SCALE) * 100));
 
 // ---- toast ---------------------------------------------------------------
 function toast(msg, level = "info") {
@@ -98,6 +103,7 @@ async function startMonitoring() {
     btn.classList.add("stop");
     btn.disabled = false;
     $("#status-dot").classList.add("live");
+    $("#cal-hint").textContent = "Live — open and close your mouth to calibrate.";
     toast("Monitoring started", "info");
   } catch (err) {
     console.error(err);
@@ -122,6 +128,11 @@ function stopMonitoring() {
   btn.classList.remove("stop");
   btn.disabled = false;
   $("#status-dot").classList.remove("live");
+  lastMar = null;
+  $("#cal-hint").textContent = "Start monitoring on the Monitor tab to see live MAR.";
+  $("#cal-mar").textContent = "—";
+  $("#cal-state").textContent = "—";
+  $("#cal-fill").style.width = "0%";
 }
 
 function onFrame(result) {
@@ -134,6 +145,12 @@ function onFrame(result) {
     state === "open" ? "OPEN" : state === "closed" ? "CLOSED" : "…";
   $("#mar-value").textContent = mar;
   $("#face-status").textContent = result.face ? "face detected" : "no face";
+
+  // Feed the Calibrate tab's live readout (cheap even when that tab is hidden).
+  lastMar = result.lips ? result.lips.mar : null;
+  $("#cal-mar").textContent = lastMar != null ? lastMar.toFixed(3) : "—";
+  $("#cal-state").textContent = state;
+  $("#cal-fill").style.width = (lastMar != null ? marPct(lastMar) : 0) + "%";
 
   if (notifier && pipeline) {
     const tis = pipeline.smoother.timeInState(result.timestamp);
@@ -162,7 +179,7 @@ function refreshStats() {
 }
 
 // ---- config --------------------------------------------------------------
-function bindConfigForm() {
+function populateConfigForm() {
   const form = $("#config-form");
   const set = (name, val) => {
     const el = form.elements[name];
@@ -182,6 +199,11 @@ function bindConfigForm() {
   set("apiBase", settings.cloud.apiBase);
   set("uploadEnabled", settings.cloud.uploadEnabled);
   set("rollupSeconds", settings.cloud.rollupSeconds);
+}
+
+function bindConfigForm() {
+  const form = $("#config-form");
+  populateConfigForm();
 
   form.addEventListener("submit", (e) => {
     e.preventDefault();
@@ -221,14 +243,76 @@ function bindConfigForm() {
     }
     saveSettings(settings);
     if (notifier) notifier.updateConfig(settings.notifications);
+    // Detection thresholds can apply live; capture changes need a restart.
+    if (pipeline) {
+      pipeline.updateDetection({
+        openThreshold: settings.detection.openThreshold,
+        closeThreshold: settings.detection.closeThreshold,
+        minOpenSeconds: settings.detection.minOpenSeconds,
+        minClosedSeconds: settings.detection.minClosedSeconds,
+      });
+    }
+    refreshCalibrateUI();
     toast("Settings saved" + (pipeline ? " — restart monitoring to apply capture changes" : ""), "info");
   });
 
   $("#config-reset").addEventListener("click", () => {
     settings = resetSettings();
-    bindConfigForm();
+    populateConfigForm();
+    refreshCalibrateUI();
+    if (pipeline) {
+      pipeline.updateDetection({
+        openThreshold: settings.detection.openThreshold,
+        closeThreshold: settings.detection.closeThreshold,
+        minOpenSeconds: settings.detection.minOpenSeconds,
+        minClosedSeconds: settings.detection.minClosedSeconds,
+      });
+    }
     toast("Settings reset to defaults", "info");
   });
+}
+
+// ---- calibrate -----------------------------------------------------------
+function refreshCalibrateUI() {
+  const d = settings.detection;
+  const openEl = $("#cal-open");
+  if (!openEl) return;
+  openEl.value = d.openThreshold;
+  $("#cal-close").value = d.closeThreshold;
+  $("#cal-open-val").textContent = d.openThreshold.toFixed(2);
+  $("#cal-close-val").textContent = d.closeThreshold.toFixed(2);
+  $("#cal-mark-open").style.left = marPct(d.openThreshold) + "%";
+  $("#cal-mark-close").style.left = marPct(d.closeThreshold) + "%";
+}
+
+function applyThresholds(open, close) {
+  open = round2(open);
+  close = round2(Math.min(close, open)); // enforce hysteresis: close <= open
+  settings.detection.openThreshold = open;
+  settings.detection.closeThreshold = close;
+  saveSettings(settings);
+  if (pipeline) pipeline.updateDetection({ openThreshold: open, closeThreshold: close });
+  refreshCalibrateUI();
+}
+
+function initCalibrate() {
+  $("#cal-open").addEventListener("input", (e) => {
+    applyThresholds(parseFloat(e.target.value), settings.detection.closeThreshold);
+  });
+  $("#cal-close").addEventListener("input", (e) => {
+    applyThresholds(settings.detection.openThreshold, parseFloat(e.target.value));
+  });
+  $("#cal-set-open").addEventListener("click", () => {
+    if (lastMar == null) return toast("No live MAR yet — start monitoring first.", "warn");
+    applyThresholds(lastMar, settings.detection.closeThreshold);
+    toast(`Open threshold set to ${round2(lastMar)}`, "info");
+  });
+  $("#cal-set-close").addEventListener("click", () => {
+    if (lastMar == null) return toast("No live MAR yet — start monitoring first.", "warn");
+    applyThresholds(settings.detection.openThreshold, lastMar);
+    toast(`Close threshold set to ${round2(Math.min(lastMar, settings.detection.openThreshold))}`, "info");
+  });
+  refreshCalibrateUI();
 }
 
 // ---- statistics (cross-day, from the central store) ----------------------
@@ -280,8 +364,11 @@ function renderDaily(days) {
 function boot() {
   initTabs((name) => {
     if (name === "stats") loadStatistics();
+    if (name === "config") populateConfigForm();
+    if (name === "calibrate") refreshCalibrateUI();
   });
   bindConfigForm();
+  initCalibrate();
 
   $("#toggle-btn").addEventListener("click", () => {
     if (pipeline) {

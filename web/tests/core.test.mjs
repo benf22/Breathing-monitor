@@ -87,4 +87,18 @@ assert.equal(d.openPercentage, 60);
 assert.equal(d.framesProcessed, 2);
 assert.equal(d.framesWithFace, 1);
 
+// --- pipeline live threshold update ---
+const { Pipeline } = await import("../js/pipeline/pipeline.js");
+const fakeSensor = { start() {}, stop() {}, get videoElement() { return null; } };
+const pl = new Pipeline(fakeSensor, {
+  openThreshold: 0.35, closeThreshold: 0.28, minOpenSeconds: 0.15, minClosedSeconds: 0.15,
+});
+pl.updateDetection({ openThreshold: 0.5, closeThreshold: 0.4 });
+assert.equal(pl.detection.openThreshold, 0.5);
+assert.equal(pl.smoother.config.openThreshold, 0.5);
+assert.equal(pl.smoother.config.closeThreshold, 0.4);
+// hysteresis invariant is preserved when close would exceed open
+pl.updateDetection({ openThreshold: 0.3 });
+assert.equal(pl.smoother.config.closeThreshold, 0.3, "close clamped to open");
+
 console.log("ALL JS CORE TESTS PASSED");

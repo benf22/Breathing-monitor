@@ -18,6 +18,7 @@
     </div>
     <nav class="tabs">
       <button data-tab-btn="monitor" class="active">Monitor</button>
+      <button data-tab-btn="calibrate">Calibrate</button>
       <button data-tab-btn="definitions">Definitions</button>
       <button data-tab-btn="config">Config</button>
       <button data-tab-btn="stats">Statistics</button>
@@ -32,6 +33,10 @@
           <canvas id="preview"></canvas>
           <div class="preview-meta">
             <span id="face-status">idle</span>
+            <span class="legend">
+              <span class="dot-lip"></span>lips
+              <span class="dot-nose"></span>nose
+            </span>
             <span>MAR <b id="mar-value">—</b></span>
           </div>
         </div>
@@ -55,6 +60,48 @@
       <div class="changes-card">
         <h3>Recent changes</h3>
         <ul id="changes-list" class="changes-list"></ul>
+      </div>
+    </section>
+
+    <!-- CALIBRATE -->
+    <section data-tab="calibrate" class="panel" hidden>
+      <div class="doc">
+        <h2>Calibrate the MAR thresholds</h2>
+        <p class="muted">Start monitoring, then open and close your mouth naturally.
+           Drag the sliders (or use the capture buttons) so <b>closed</b> sits below
+           the close line and <b>open</b> sits above the open line. Changes apply
+           live and are saved.</p>
+
+        <div class="cal-live">
+          <div class="cal-readout">
+            <span id="cal-mar">—</span><label>current MAR</label>
+          </div>
+          <div class="cal-readout">
+            <span id="cal-state">—</span><label>state</label>
+          </div>
+        </div>
+
+        <div class="cal-meter" aria-hidden="true">
+          <div class="cal-fill" id="cal-fill"></div>
+          <div class="cal-mark cal-mark-close" id="cal-mark-close"><span>close</span></div>
+          <div class="cal-mark cal-mark-open" id="cal-mark-open"><span>open</span></div>
+        </div>
+        <p id="cal-hint" class="muted small">Start monitoring on the Monitor tab to see live MAR.</p>
+
+        <div class="cal-controls">
+          <div class="cal-row">
+            <label for="cal-open">Open threshold: <b id="cal-open-val">0.35</b></label>
+            <input id="cal-open" type="range" min="0" max="1" step="0.01" value="0.35" />
+            <button id="cal-set-open" class="ghost" type="button">Set from current MAR</button>
+          </div>
+          <div class="cal-row">
+            <label for="cal-close">Close threshold: <b id="cal-close-val">0.28</b></label>
+            <input id="cal-close" type="range" min="0" max="1" step="0.01" value="0.28" />
+            <button id="cal-set-close" class="ghost" type="button">Set from current MAR</button>
+          </div>
+          <p class="muted small">The close threshold is kept at or below the open
+             threshold (hysteresis) to prevent flicker.</p>
+        </div>
       </div>
     </section>
 

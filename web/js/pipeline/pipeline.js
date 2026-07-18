@@ -43,6 +43,22 @@ export class Pipeline {
     }
   }
 
+  /**
+   * Update detection thresholds on a running pipeline (no restart needed).
+   * Keeps the instantaneous decision and the smoother's hysteresis in sync.
+   * @param {{openThreshold?:number, closeThreshold?:number,
+   *          minOpenSeconds?:number, minClosedSeconds?:number}} partial
+   */
+  updateDetection(partial) {
+    this.detection = { ...this.detection, ...partial };
+    const c = this.smoother.config;
+    for (const k of ["openThreshold", "closeThreshold", "minOpenSeconds", "minClosedSeconds"]) {
+      if (partial[k] !== undefined) c[k] = partial[k];
+    }
+    // Preserve the hysteresis invariant so _desired() stays well-defined.
+    if (c.closeThreshold > c.openThreshold) c.closeThreshold = c.openThreshold;
+  }
+
   async start() {
     this._startedAt = Date.now();
     this._emit("status", { running: true });
