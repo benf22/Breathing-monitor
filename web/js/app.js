@@ -133,9 +133,13 @@ function stopMonitoring() {
   $("#cal-mar").textContent = "—";
   $("#cal-state").textContent = "—";
   $("#cal-fill").style.width = "0%";
+  resetNarMeter();
 }
 
 function onFrame(result) {
+  // Draw the face box + lip/nose landmarks over the preview video.
+  if (preview) preview.setResult(result);
+
   const indicator = $("#indicator");
   const mar = result.lips ? result.lips.mar.toFixed(3) : "—";
   const state = result.state;
@@ -151,6 +155,9 @@ function onFrame(result) {
   $("#cal-mar").textContent = lastMar != null ? lastMar.toFixed(3) : "—";
   $("#cal-state").textContent = state;
   $("#cal-fill").style.width = (lastMar != null ? marPct(lastMar) : 0) + "%";
+
+  // Experimental nose-breathing signal (auto-scaled bar).
+  updateNarMeter(result.nose ? result.nose.nar : null);
 
   if (notifier && pipeline) {
     const tis = pipeline.smoother.timeInState(result.timestamp);
@@ -313,6 +320,41 @@ function initCalibrate() {
     toast(`Close threshold set to ${round2(Math.min(lastMar, settings.detection.openThreshold))}`, "info");
   });
   refreshCalibrateUI();
+}
+
+// ---- nostril ratio (experimental nose-breathing signal) ------------------
+const NAR_WINDOW = 120; // ~24s at 5 fps
+let narBuf = [];
+
+function updateNarMeter(nar) {
+  const valEl = $("#nar-value");
+  if (!valEl) return;
+  if (nar == null) {
+    valEl.textContent = "—";
+    return;
+  }
+  valEl.textContent = nar.toFixed(3);
+  narBuf.push(nar);
+  if (narBuf.length > NAR_WINDOW) narBuf.shift();
+  // Auto-scale the bar to the recent min/max so subtle nostril motion is visible.
+  let mn = Infinity, mx = -Infinity;
+  for (const v of narBuf) {
+    if (v < mn) mn = v;
+    if (v > mx) mx = v;
+  }
+  const amp = mx - mn;
+  $("#nar-amp").textContent = amp.toFixed(3);
+  const pct = amp > 1e-6 ? ((nar - mn) / amp) * 100 : 50;
+  $("#nar-fill").style.width = pct + "%";
+}
+
+function resetNarMeter() {
+  narBuf = [];
+  if ($("#nar-value")) {
+    $("#nar-value").textContent = "—";
+    $("#nar-amp").textContent = "—";
+    $("#nar-fill").style.width = "0%";
+  }
 }
 
 // ---- statistics (cross-day, from the central store) ----------------------

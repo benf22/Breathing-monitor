@@ -102,6 +102,25 @@
           <p class="muted small">The close threshold is kept at or below the open
              threshold (hysteresis) to prevent flicker.</p>
         </div>
+
+        <hr class="sep" />
+
+        <h2>Nose breathing <span class="tag-exp">experimental</span></h2>
+        <p class="muted">Nostril ratio <b>NAR = nostril width ÷ nose length</b>.
+           With your <b>mouth closed</b>, breathe through your nose and watch the
+           bar: if nostril flare is detectable, it should oscillate with each
+           breath. The motion is small and noisy, so this may or may not resolve a
+           usable signal for your face/camera — this bar lets you check.</p>
+
+        <div class="cal-live">
+          <div class="cal-readout"><span id="nar-value">—</span><label>current NAR</label></div>
+          <div class="cal-readout"><span id="nar-amp">—</span><label>recent range</label></div>
+        </div>
+        <div class="cal-meter"><div class="cal-fill nar-fill" id="nar-fill"></div></div>
+        <p class="muted small">The bar auto-scales to the recent min/max (~24 s),
+           so even tiny changes are amplified. A rising “recent range” with a
+           bar that pulses in time with your breathing is the signal you’re
+           looking for; a bar that only jerks when you move your head is not.</p>
       </div>
     </section>
 

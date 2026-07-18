@@ -87,6 +87,24 @@ assert.equal(d.openPercentage, 60);
 assert.equal(d.framesProcessed, 2);
 assert.equal(d.framesWithFace, 1);
 
+// --- nostril ratio (NAR) ---
+const { nostrilMetrics, nostrilLandmarkIndices } = await import("../js/core/nostrils.js");
+function noseLandmarks(width, length) {
+  const pts = Array.from({ length: 478 }, () => [0, 0, 0]);
+  pts[129] = [0.5 - width / 2, 0.5, 0]; // left ala
+  pts[358] = [0.5 + width / 2, 0.5, 0]; // right ala
+  pts[168] = [0.5, 0.5 - length / 2, 0]; // nasion
+  pts[2] = [0.5, 0.5 + length / 2, 0]; // subnasale
+  return pts;
+}
+let nm = nostrilMetrics(noseLandmarks(0.2, 0.4), 1.0);
+assert.ok(Math.abs(nm.nar - 0.5) < 1e-9, `nar=${nm.nar}`);
+assert.ok(Math.abs(nm.width - 0.2) < 1e-9 && Math.abs(nm.length - 0.4) < 1e-9);
+// wider nostrils (flare) -> higher NAR
+assert.ok(nostrilMetrics(noseLandmarks(0.24, 0.4), 1.0).nar > nm.nar);
+assert.throws(() => nostrilMetrics([[0, 0, 0]], 1.0));
+assert.deepEqual(nostrilLandmarkIndices(), [2, 129, 168, 358]);
+
 // --- pipeline live threshold update ---
 const { Pipeline } = await import("../js/pipeline/pipeline.js");
 const fakeSensor = { start() {}, stop() {}, get videoElement() { return null; } };

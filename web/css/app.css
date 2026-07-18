@@ -79,6 +79,9 @@ main { max-width: 900px; margin: 0 auto; padding: 16px; }
 .cal-row label { color: var(--muted); }
 .cal-row input[type="range"] { grid-column: 1 / -1; width: 100%; accent-color: var(--accent); }
 .cal-row button { grid-column: 2; grid-row: 1; }
+.nar-fill { background: linear-gradient(90deg, #5b8cff, #39d98a); }
+.sep { border: 0; border-top: 1px solid var(--border); margin: 24px 0; }
+.tag-exp { font-size: 11px; font-weight: 600; color: #0f1420; background: #ffd166; padding: 2px 8px; border-radius: 999px; vertical-align: middle; }
 
 .control-card { display: flex; flex-direction: column; gap: 14px; align-items: stretch; }
 #indicator {

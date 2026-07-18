@@ -7,6 +7,7 @@
 // start(onFrame)/stop()/videoElement satisfies the `sensor` contract.
 
 import { lipMetrics } from "../core/lips.js";
+import { nostrilMetrics } from "../core/nostrils.js";
 import { LipStateSmoother } from "../core/smoothing.js";
 import { StatsAccumulator } from "../core/stats.js";
 import { LipState } from "../core/types.js";
@@ -75,6 +76,7 @@ export class Pipeline {
     const openThreshold = this.detection.openThreshold ?? 0.35;
 
     let lips = null;
+    let nose = null;
     let rawState = LipState.UNKNOWN;
     let mar = null;
 
@@ -86,6 +88,11 @@ export class Pipeline {
       } catch (e) {
         // Landmark list too short / malformed — treat as no usable face.
         lips = null;
+      }
+      try {
+        nose = nostrilMetrics(frame.landmarks, frame.aspectRatio);
+      } catch (e) {
+        nose = null;
       }
     }
 
@@ -101,6 +108,7 @@ export class Pipeline {
         ? { bbox: frame.bbox, landmarks: frame.landmarks, confidence: 1.0 }
         : null,
       lips,
+      nose,
       rawState,
       state,
       stateChange: change,
