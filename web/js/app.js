@@ -4,6 +4,7 @@
 import { FaceSensor } from "./vision/faceSensor.js";
 import { Pipeline } from "./pipeline/pipeline.js";
 import { MetadataUploader } from "./storage/uploader.js";
+import * as localStore from "./storage/localStore.js";
 import { Notifier } from "./notifications.js";
 import { PreviewRenderer } from "./ui/overlay.js";
 import { initTabs } from "./ui/tabs.js";
@@ -27,6 +28,9 @@ let preview = null;
 let rollupTimer = null;
 let statusTimer = null;
 let lastMar = null; // most recent instantaneous MAR (for Calibrate capture buttons)
+let currentSessionId = null;
+let currentClientId = null;
+let sessionStartedAt = 0;
 
 const MAR_SCALE = 1.0; // meter/threshold display range (MAR is ~0..0.8+)
 const round2 = (v) => Math.round(v * 100) / 100;
@@ -73,12 +77,17 @@ async function startMonitoring() {
     notifier = new Notifier(settings.notifications, toast);
     if (settings.notifications.enabled) await notifier.requestPermission();
 
-    const sessionId = newSessionId();
-    if (settings.cloud.uploadEnabled) {
+    currentSessionId = newSessionId();
+    currentClientId = getClientId();
+    sessionStartedAt = Date.now();
+    // Cloud upload only when an API base is configured; otherwise metadata lives
+    // on-device in IndexedDB — no backend needed.
+    const apiBase = (settings.cloud.apiBase || "").trim();
+    if (settings.cloud.uploadEnabled && apiBase) {
       uploader = new MetadataUploader({
-        apiBase: settings.cloud.apiBase,
-        sessionId,
-        clientId: getClientId(),
+        apiBase,
+        sessionId: currentSessionId,
+        clientId: currentClientId,
       });
       uploader.start();
     }
@@ -91,12 +100,15 @@ async function startMonitoring() {
     preview = new PreviewRenderer($("#preview"));
     preview.attach(sensor.videoElement);
 
-    // Periodic rollup upload for cross-day aggregation.
-    if (uploader) {
-      rollupTimer = setInterval(() => {
-        uploader.enqueueRollup(pipeline.snapshot());
-      }, (settings.cloud.rollupSeconds || 30) * 1000);
-    }
+    // Periodic rollup: always persisted on-device; also uploaded if a backend
+    // is configured.
+    rollupTimer = setInterval(() => {
+      const snap = pipeline.snapshot();
+      localStore
+        .recordRollup(currentSessionId, currentClientId, snap, sessionStartedAt)
+        .catch((e) => console.warn("local store:", e));
+      if (uploader) uploader.enqueueRollup(snap);
+    }, (settings.cloud.rollupSeconds || 30) * 1000);
     statusTimer = setInterval(refreshStats, 1000);
 
     btn.textContent = "Stop monitoring";
@@ -115,6 +127,12 @@ async function startMonitoring() {
 }
 
 function stopMonitoring() {
+  // Persist the session's final totals before tearing down.
+  if (pipeline && currentSessionId) {
+    localStore
+      .recordRollup(currentSessionId, currentClientId, pipeline.snapshot(), sessionStartedAt)
+      .catch(() => {});
+  }
   if (rollupTimer) clearInterval(rollupTimer), (rollupTimer = null);
   if (statusTimer) clearInterval(statusTimer), (statusTimer = null);
   if (uploader) uploader.stop(), (uploader = null);
@@ -360,21 +378,27 @@ function resetNarMeter() {
 // ---- statistics (cross-day, from the central store) ----------------------
 async function loadStatistics() {
   const status = $("#stats-status");
-  const base = (settings.cloud.apiBase || "").replace(/\/$/, "");
+  const base = (settings.cloud.apiBase || "").trim().replace(/\/$/, "");
   status.textContent = "Loading…";
   try {
-    const res = await fetch(`${base}/api/stats/daily?days=30`);
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
-    const data = await res.json();
+    let data, source;
+    if (base) {
+      const res = await fetch(`${base}/api/stats/daily?days=30`);
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      data = await res.json();
+      source = "central server";
+    } else {
+      data = await localStore.daily(30);
+      source = "this device";
+    }
     renderDaily(data.days || []);
     renderTotals(data.totals || {});
-    status.textContent = data.days && data.days.length
-      ? `Showing ${data.days.length} day(s) from the central store.`
-      : "No data yet — start monitoring to populate the central store.";
-  } catch (err) {
     status.textContent =
-      "Could not reach the central store (" + err.message + "). " +
-      "Check the API base in Config, or that the server is running.";
+      data.days && data.days.length
+        ? `Showing ${data.days.length} day(s) from ${source}.`
+        : `No data yet (${source}) — start monitoring to record some.`;
+  } catch (err) {
+    status.textContent = "Could not load statistics (" + err.message + ").";
   }
 }
 
@@ -430,6 +454,9 @@ function boot() {
   if (!window.isSecureContext) {
     toast("Camera needs HTTPS or localhost. Detection may not start here.", "warn");
   }
+
+  // Ask the browser to keep our on-device stats from being evicted.
+  localStore.requestPersistence().catch(() => {});
 }
 
 boot();

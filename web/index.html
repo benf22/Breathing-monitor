@@ -212,12 +212,16 @@
         </fieldset>
 
         <fieldset>
-          <legend>Central store</legend>
-          <label class="row"><input name="uploadEnabled" type="checkbox" /> Upload metadata for cross-day stats</label>
-          <label>API base URL (blank = same server that served this page)
-            <input name="apiBase" type="text" placeholder="http://192.168.1.20:8000" />
+          <legend>Storage</legend>
+          <p class="muted small">Metadata is always saved <b>on this device</b>
+             (IndexedDB) and the Statistics tab reads it from there — no server
+             required. Optionally also send it to a backend for cross-device
+             stats by filling in an API base below.</p>
+          <label class="row"><input name="uploadEnabled" type="checkbox" /> Also upload to a backend (optional)</label>
+          <label>API base URL (blank = on-device only)
+            <input name="apiBase" type="text" placeholder="https://your-server.example.com" />
           </label>
-          <label>Rollup upload interval (seconds)
+          <label>Record interval (seconds)
             <input name="rollupSeconds" type="number" step="5" min="5" />
           </label>
         </fieldset>
@@ -236,6 +240,8 @@
           <h2>Statistics across days</h2>
           <button id="stats-refresh" class="ghost">Refresh</button>
         </div>
+        <p class="muted small">Aggregated from metadata saved on this device.
+           Percent-open per day, across sessions.</p>
         <p id="stats-status" class="muted">—</p>
 
         <div class="stat-tiles">
