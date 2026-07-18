@@ -30,6 +30,9 @@ body {
   backdrop-filter: blur(8px); border-bottom: 1px solid var(--border);
 }
 .brand { display: flex; align-items: center; gap: 8px; }
+.ver { color: var(--muted); font-size: 11px; font-family: ui-monospace, monospace; }
+.icon-btn { background: var(--panel-2); color: var(--muted); border: 1px solid var(--border); border-radius: 8px; width: 28px; height: 28px; cursor: pointer; font-size: 15px; line-height: 1; }
+.icon-btn:active { transform: rotate(180deg); transition: transform .3s; }
 .dot { width: 10px; height: 10px; border-radius: 50%; background: #556; transition: background .2s; }
 .dot.live { background: var(--closed); box-shadow: 0 0 10px var(--closed); }
 .tabs { display: flex; gap: 4px; flex-wrap: wrap; }
@@ -131,6 +134,14 @@ button.ghost { background: transparent; color: var(--muted); border: 1px solid v
 .form-actions { display: flex; gap: 10px; }
 
 .stats-head { display: flex; align-items: center; justify-content: space-between; }
+.chart { width: 100%; overflow-x: auto; margin: 8px 0 20px; }
+.chart svg { width: 100%; height: auto; display: block; }
+.chart .empty { color: var(--muted); font-size: 13px; padding: 20px 4px; }
+.chart .c-grid { stroke: var(--border); stroke-width: 1; }
+.chart .c-axis { fill: var(--muted); font-size: 10px; font-family: ui-monospace, monospace; }
+.chart .c-label { fill: var(--text); font-size: 11px; font-weight: 700; }
+.chart .c-cross { stroke: var(--muted); stroke-width: 1; stroke-dasharray: 3 3; }
+.chart-tip { position: absolute; pointer-events: none; background: var(--panel-2); border: 1px solid var(--border); color: var(--text); font-size: 12px; padding: 4px 8px; border-radius: 8px; white-space: nowrap; transform: translateY(-100%); z-index: 3; }
 .daily-bars { display: flex; flex-direction: column; gap: 6px; margin-top: 10px; }
 .bar-row { display: grid; grid-template-columns: 92px 1fr 72px; align-items: center; gap: 10px; font-size: 13px; }
 .bar-label { color: var(--muted); font-family: ui-monospace, monospace; }

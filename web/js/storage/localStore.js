@@ -77,6 +77,8 @@ export async function recordRollup(sessionId, clientId, snapshot, startedAtMs) {
     day: localDay(started),
     openSeconds: snapshot.totalOpenSeconds ?? 0,
     closedSeconds: snapshot.totalClosedSeconds ?? 0,
+    maxClosedSeconds: snapshot.maxClosedSeconds ?? 0,
+    maxOpenSeconds: snapshot.maxOpenSeconds ?? 0,
     changes: snapshot.totalChanges ?? 0,
     framesProcessed: snapshot.framesProcessed ?? 0,
     framesWithFace: snapshot.framesWithFace ?? 0,
@@ -104,15 +106,16 @@ export async function daily(days = 30) {
   const byDay = new Map();
   for (const s of rows) {
     if (s.day < cutoff) continue;
-    const e = byDay.get(s.day) || { open: 0, closed: 0, sessions: 0 };
+    const e = byDay.get(s.day) || { open: 0, closed: 0, sessions: 0, maxClosed: 0 };
     e.open += s.openSeconds || 0;
     e.closed += s.closedSeconds || 0;
+    e.maxClosed = Math.max(e.maxClosed, s.maxClosedSeconds || 0);
     e.sessions += 1;
     byDay.set(s.day, e);
   }
 
   const daysOut = [];
-  let totOpen = 0, totClosed = 0, totSessions = 0;
+  let totOpen = 0, totClosed = 0, totSessions = 0, overallMaxClosed = 0;
   for (const date of [...byDay.keys()].sort()) {
     const e = byDay.get(date);
     const known = e.open + e.closed;
@@ -122,10 +125,12 @@ export async function daily(days = 30) {
       open_seconds: round(e.open, 1),
       closed_seconds: round(e.closed, 1),
       open_percentage: known > 0 ? round((e.open / known) * 100, 1) : 0,
+      max_closed_seconds: round(e.maxClosed, 1),
     });
     totOpen += e.open;
     totClosed += e.closed;
     totSessions += e.sessions;
+    overallMaxClosed = Math.max(overallMaxClosed, e.maxClosed);
   }
 
   const known = totOpen + totClosed;
@@ -137,6 +142,7 @@ export async function daily(days = 30) {
       total_open_seconds: round(totOpen, 1),
       total_closed_seconds: round(totClosed, 1),
       open_percentage: known > 0 ? round((totOpen / known) * 100, 1) : 0,
+      max_closed_seconds: round(overallMaxClosed, 1),
     },
   };
 }

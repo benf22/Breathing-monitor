@@ -8,6 +8,8 @@ import * as localStore from "./storage/localStore.js";
 import { Notifier } from "./notifications.js";
 import { PreviewRenderer } from "./ui/overlay.js";
 import { initTabs } from "./ui/tabs.js";
+import { lineChart } from "./ui/charts.js";
+import { APP_VERSION } from "./version.js";
 import {
   loadSettings,
   saveSettings,
@@ -391,6 +393,7 @@ async function loadStatistics() {
       data = await localStore.daily(30);
       source = "this device";
     }
+    renderCharts(data.days || []);
     renderDaily(data.days || []);
     renderTotals(data.totals || {});
     status.textContent =
@@ -407,6 +410,24 @@ function renderTotals(t) {
   $("#agg-sessions").textContent = t.sessions ?? 0;
   $("#agg-open-pct").textContent = (t.open_percentage ?? 0).toFixed(1) + "%";
   $("#agg-open-hours").textContent = ((t.total_open_seconds ?? 0) / 3600).toFixed(1) + "h";
+}
+
+function renderCharts(days) {
+  const openSeries = days.map((d) => ({ date: d.date, value: d.open_percentage ?? 0 }));
+  const closedSeries = days.map((d) => ({ date: d.date, value: d.max_closed_seconds ?? 0 }));
+  // % open: 0..100, semantic "open" hue (red). Max closed duration: seconds,
+  // semantic "closed" hue (green). Two separate charts — never a dual axis.
+  lineChart($("#chart-open"), openSeries, {
+    color: "var(--open)",
+    yMax: 100,
+    unit: "%",
+    fmt: (v) => Math.round(v),
+  });
+  lineChart($("#chart-closed"), closedSeries, {
+    color: "var(--closed)",
+    unit: "s",
+    fmt: (v) => (v >= 10 ? Math.round(v) : Math.round(v * 10) / 10),
+  });
 }
 
 function renderDaily(days) {
@@ -426,8 +447,49 @@ function renderDaily(days) {
   }
 }
 
+// ---- updates -------------------------------------------------------------
+async function hardRefresh() {
+  toast("Updating…", "info");
+  try {
+    if (window.caches) {
+      const keys = await caches.keys();
+      await Promise.all(keys.map((k) => caches.delete(k)));
+    }
+    if ("serviceWorker" in navigator) {
+      const regs = await navigator.serviceWorker.getRegistrations();
+      await Promise.all(regs.map((r) => r.unregister()));
+    }
+  } catch {
+    /* best effort */
+  }
+  location.reload();
+}
+
+function registerServiceWorker() {
+  if (!("serviceWorker" in navigator)) return;
+  navigator.serviceWorker
+    .register("./sw.js")
+    .then((reg) => {
+      reg.addEventListener("updatefound", () => {
+        const nw = reg.installing;
+        if (!nw) return;
+        nw.addEventListener("statechange", () => {
+          if (nw.state === "installed" && navigator.serviceWorker.controller) {
+            toast("New version ready — tap ↻ to update.", "info");
+          }
+        });
+      });
+    })
+    .catch(() => {});
+}
+
 // ---- boot ----------------------------------------------------------------
 function boot() {
+  $("#app-version").textContent = "v" + APP_VERSION;
+  console.info("Breathing Monitor v" + APP_VERSION);
+  $("#refresh-btn").addEventListener("click", hardRefresh);
+  registerServiceWorker();
+
   initTabs((name) => {
     if (name === "stats") loadStatistics();
     if (name === "config") populateConfigForm();

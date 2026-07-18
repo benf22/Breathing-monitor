@@ -43,6 +43,8 @@ export function makeStatsSummary() {
     closedCount: 0,
     totalOpenSeconds: 0,
     totalClosedSeconds: 0,
+    maxOpenSeconds: 0,
+    maxClosedSeconds: 0,
     framesProcessed: 0,
     framesWithFace: 0,
     recentChanges: [],

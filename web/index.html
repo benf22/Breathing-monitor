@@ -15,6 +15,8 @@
     <div class="brand">
       <span id="status-dot" class="dot"></span>
       <strong>Breathing Monitor</strong>
+      <span class="ver" id="app-version"></span>
+      <button id="refresh-btn" class="icon-btn" title="Update to latest version" aria-label="Update to latest version">↻</button>
     </div>
     <nav class="tabs">
       <button data-tab-btn="monitor" class="active">Monitor</button>
@@ -251,6 +253,12 @@
           <div class="tile"><span id="agg-open-hours">0h</span><label>open total</label></div>
         </div>
 
+        <h3>% mouth-open over time</h3>
+        <div id="chart-open" class="chart"></div>
+
+        <h3>Max continuous closed duration over time</h3>
+        <div id="chart-closed" class="chart"></div>
+
         <h3>Daily % mouth-open</h3>
         <div id="daily-bars" class="daily-bars"></div>
       </div>
@@ -259,12 +267,5 @@
 
   <div id="toasts" class="toasts"></div>
   <script type="module" src="./js/app.js"></script>
-  <script>
-    if ("serviceWorker" in navigator) {
-      window.addEventListener("load", () =>
-        navigator.serviceWorker.register("./sw.js").catch(() => {})
-      );
-    }
-  </script>
 </body>
 </html>

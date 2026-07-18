@@ -27,11 +27,14 @@ export class StatsAccumulator {
     const s = this._summary;
     s.totalChanges += 1;
 
-    // Attribute the just-ended state's duration to the correct bucket.
+    // Attribute the just-ended state's duration to the correct bucket, and track
+    // the longest single continuous span of each state.
     if (change.fromState === LipState.OPEN) {
       s.totalOpenSeconds += change.prevDuration;
+      if (change.prevDuration > s.maxOpenSeconds) s.maxOpenSeconds = change.prevDuration;
     } else if (change.fromState === LipState.CLOSED) {
       s.totalClosedSeconds += change.prevDuration;
+      if (change.prevDuration > s.maxClosedSeconds) s.maxClosedSeconds = change.prevDuration;
     }
 
     if (change.toState === LipState.OPEN) s.openCount += 1;
@@ -49,6 +52,12 @@ export class StatsAccumulator {
     const faceRate = s.framesProcessed ? s.framesWithFace / s.framesProcessed : 0.0;
     const totalKnown = s.totalOpenSeconds + s.totalClosedSeconds;
     const openPct = totalKnown > 0 ? s.totalOpenSeconds / totalKnown : 0.0;
+    // Include the currently-ongoing span so a long open/closed stretch counts
+    // even before it flips (and confirms a StateChange).
+    let maxOpen = s.maxOpenSeconds;
+    let maxClosed = s.maxClosedSeconds;
+    if (currentState === LipState.OPEN) maxOpen = Math.max(maxOpen, timeInState);
+    else if (currentState === LipState.CLOSED) maxClosed = Math.max(maxClosed, timeInState);
     return {
       currentState,
       timeInStateSeconds: round(timeInState, 2),
@@ -57,6 +66,8 @@ export class StatsAccumulator {
       closedEvents: s.closedCount,
       totalOpenSeconds: round(s.totalOpenSeconds, 2),
       totalClosedSeconds: round(s.totalClosedSeconds, 2),
+      maxOpenSeconds: round(maxOpen, 2),
+      maxClosedSeconds: round(maxClosed, 2),
       openPercentage: round(openPct * 100, 1),
       framesProcessed: s.framesProcessed,
       framesWithFace: s.framesWithFace,

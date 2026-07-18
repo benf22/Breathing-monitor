@@ -10,10 +10,10 @@ const today = Date.now();
 const yesterday = today - 24 * 3600_000;
 
 // Two sessions today, one yesterday. Rollups are cumulative → last one wins.
-await store.recordRollup("s1", "dev", { totalOpenSeconds: 30, totalClosedSeconds: 90, totalChanges: 3 }, today);
-await store.recordRollup("s1", "dev", { totalOpenSeconds: 60, totalClosedSeconds: 140, totalChanges: 5 }, today); // supersedes s1
-await store.recordRollup("s2", "dev", { totalOpenSeconds: 40, totalClosedSeconds: 60, totalChanges: 2 }, today);
-await store.recordRollup("s3", "dev", { totalOpenSeconds: 10, totalClosedSeconds: 10, totalChanges: 1 }, yesterday);
+await store.recordRollup("s1", "dev", { totalOpenSeconds: 30, totalClosedSeconds: 90, totalChanges: 3, maxClosedSeconds: 5 }, today);
+await store.recordRollup("s1", "dev", { totalOpenSeconds: 60, totalClosedSeconds: 140, totalChanges: 5, maxClosedSeconds: 12 }, today); // supersedes s1
+await store.recordRollup("s2", "dev", { totalOpenSeconds: 40, totalClosedSeconds: 60, totalChanges: 2, maxClosedSeconds: 8 }, today);
+await store.recordRollup("s3", "dev", { totalOpenSeconds: 10, totalClosedSeconds: 10, totalChanges: 1, maxClosedSeconds: 3 }, yesterday);
 
 const res = await store.daily(30);
 
@@ -25,6 +25,9 @@ const todayRow = res.days.find((d) => d.sessions === 2);
 assert.ok(Math.abs(todayRow.open_seconds - 100) < 0.01, JSON.stringify(todayRow));
 assert.ok(Math.abs(todayRow.closed_seconds - 200) < 0.01, JSON.stringify(todayRow));
 assert.ok(Math.abs(todayRow.open_percentage - 33.3) < 0.1, JSON.stringify(todayRow));
+// today's max continuous closed = max(12, 8) = 12
+assert.equal(todayRow.max_closed_seconds, 12, JSON.stringify(todayRow));
+assert.equal(res.totals.max_closed_seconds, 12, JSON.stringify(res.totals));
 
 // totals across both days: open = 100+10 = 110, closed = 200+10 = 210
 assert.equal(res.totals.sessions, 3);

@@ -83,6 +83,8 @@ const d = acc.asDict(LipState.CLOSED, 1.0);
 assert.equal(d.totalChanges, 2);
 assert.equal(d.totalOpenSeconds, 6);
 assert.equal(d.totalClosedSeconds, 4);
+assert.equal(d.maxClosedSeconds, 4, "longest closed span");
+assert.equal(d.maxOpenSeconds, 6, "longest open span");
 assert.equal(d.openPercentage, 60);
 assert.equal(d.framesProcessed, 2);
 assert.equal(d.framesWithFace, 1);
