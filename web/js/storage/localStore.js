@@ -1,27 +1,26 @@
 // On-device metadata store (IndexedDB) — the no-backend "central file".
 //
-// The Monitor tab writes one record per monitoring session (its latest
-// cumulative totals); the Statistics tab reads them back and aggregates by day.
-// Because IndexedDB is shared across tabs of the same origin and persists across
-// app restarts, this covers the "save small metadata centrally and read it from
-// another tab" need with no server and no network.
+// Base data is recorded at the FINEST resolution: one bucket per wall-clock
+// hour, accumulating open/closed seconds and the longest continuous closed span
+// within that hour. The Statistics selector (hour/day/week/month) is purely a
+// visualization roll-up over these hour buckets — the stored data is identical
+// regardless of what the selector shows.
 //
-// The method surface (recordRollup / daily / sessions) is deliberately the same
-// shape a future cloud store (e.g. Google Drive) would implement, so Statistics
-// doesn't care where the data lives.
+// IndexedDB is shared across tabs and persists across app restarts, so this
+// covers "save metadata centrally, read it from another tab" with no server.
 
 const DB_NAME = "breathing-monitor";
-const DB_VERSION = 1;
-const STORE = "sessionTotals";
+const DB_VERSION = 2;
+const HOURS = "hours"; // keyed by hour key "YYYY-MM-DDTHH"
+const META = "meta"; // singleton { id:"meta", sessions }
 
 function openDB() {
   return new Promise((resolve, reject) => {
     const req = indexedDB.open(DB_NAME, DB_VERSION);
     req.onupgradeneeded = () => {
       const db = req.result;
-      if (!db.objectStoreNames.contains(STORE)) {
-        db.createObjectStore(STORE, { keyPath: "id" });
-      }
+      if (!db.objectStoreNames.contains(HOURS)) db.createObjectStore(HOURS, { keyPath: "key" });
+      if (!db.objectStoreNames.contains(META)) db.createObjectStore(META, { keyPath: "id" });
     };
     req.onsuccess = () => resolve(req.result);
     req.onerror = () => reject(req.error);
@@ -35,125 +34,8 @@ function reqAsync(request) {
   });
 }
 
-function pad(n) {
-  return String(n).padStart(2, "0");
-}
-
-/** Local calendar day (YYYY-MM-DD) so days line up with the user's clock. */
-function localDay(epochMs) {
-  const d = new Date(epochMs);
-  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
-}
-
-function round(v, digits) {
-  const f = 10 ** digits;
-  return Math.round(v * f) / f;
-}
-
-/** Ask the browser to keep this data from being evicted under storage pressure. */
-export async function requestPersistence() {
-  try {
-    if (navigator.storage?.persist) return await navigator.storage.persist();
-  } catch {
-    /* best effort */
-  }
-  return false;
-}
-
-/**
- * Upsert a session's latest cumulative totals. Called periodically while
- * monitoring; the newest call wins (totals are cumulative within a session).
- */
-export async function recordRollup(sessionId, clientId, snapshot, startedAtMs) {
-  const db = await openDB();
-  const store = db.transaction(STORE, "readwrite").objectStore(STORE);
-  const existing = await reqAsync(store.get(sessionId));
-  const started = existing?.startedAt ?? startedAtMs ?? Date.now();
-  const record = {
-    id: sessionId,
-    clientId,
-    startedAt: started,
-    lastSeen: Date.now(),
-    day: localDay(started),
-    openSeconds: snapshot.totalOpenSeconds ?? 0,
-    closedSeconds: snapshot.totalClosedSeconds ?? 0,
-    maxClosedSeconds: snapshot.maxClosedSeconds ?? 0,
-    maxOpenSeconds: snapshot.maxOpenSeconds ?? 0,
-    changes: snapshot.totalChanges ?? 0,
-    framesProcessed: snapshot.framesProcessed ?? 0,
-    framesWithFace: snapshot.framesWithFace ?? 0,
-  };
-  await reqAsync(store.put(record));
-  db.close();
-}
-
-async function allSessions() {
-  const db = await openDB();
-  const store = db.transaction(STORE, "readonly").objectStore(STORE);
-  const rows = await reqAsync(store.getAll());
-  db.close();
-  return rows || [];
-}
-
-/**
- * Cross-day aggregate, same shape as the server's /api/stats/daily response so
- * the Statistics renderer is storage-agnostic.
- */
-export async function daily(days = 30) {
-  const rows = await allSessions();
-  const cutoff = localDay(Date.now() - days * 86400_000);
-
-  const byDay = new Map();
-  for (const s of rows) {
-    if (s.day < cutoff) continue;
-    const e = byDay.get(s.day) || { open: 0, closed: 0, sessions: 0, maxClosed: 0 };
-    e.open += s.openSeconds || 0;
-    e.closed += s.closedSeconds || 0;
-    e.maxClosed = Math.max(e.maxClosed, s.maxClosedSeconds || 0);
-    e.sessions += 1;
-    byDay.set(s.day, e);
-  }
-
-  const daysOut = [];
-  let totOpen = 0, totClosed = 0, totSessions = 0, overallMaxClosed = 0;
-  for (const date of [...byDay.keys()].sort()) {
-    const e = byDay.get(date);
-    const known = e.open + e.closed;
-    daysOut.push({
-      date,
-      sessions: e.sessions,
-      open_seconds: round(e.open, 1),
-      closed_seconds: round(e.closed, 1),
-      open_percentage: known > 0 ? round((e.open / known) * 100, 1) : 0,
-      max_closed_seconds: round(e.maxClosed, 1),
-    });
-    totOpen += e.open;
-    totClosed += e.closed;
-    totSessions += e.sessions;
-    overallMaxClosed = Math.max(overallMaxClosed, e.maxClosed);
-  }
-
-  const known = totOpen + totClosed;
-  return {
-    days: daysOut,
-    totals: {
-      days: daysOut.length,
-      sessions: totSessions,
-      total_open_seconds: round(totOpen, 1),
-      total_closed_seconds: round(totClosed, 1),
-      open_percentage: known > 0 ? round((totOpen / known) * 100, 1) : 0,
-      max_closed_seconds: round(overallMaxClosed, 1),
-    },
-  };
-}
-
-// How far back each resolution looks (kept modest so charts stay readable).
-const WINDOW_MS = {
-  hour: 48 * 3600_000,
-  day: 45 * 86400_000,
-  week: 26 * 7 * 86400_000,
-  month: 13 * 31 * 86400_000,
-};
+const pad = (n) => String(n).padStart(2, "0");
+const round = (v, d) => Math.round(v * 10 ** d) / 10 ** d;
 
 /** Bucket key + display label for a timestamp at the given resolution. */
 function bucketOf(ms, res) {
@@ -172,42 +54,102 @@ function bucketOf(ms, res) {
       label: `${pad(m.getMonth() + 1)}-${pad(m.getDate())}`,
     };
   }
-  if (res === "month") {
-    return { key: `${y}-${pad(mo)}`, label: `${y}-${pad(mo)}` };
-  }
+  if (res === "month") return { key: `${y}-${pad(mo)}`, label: `${y}-${pad(mo)}` };
   return { key: `${y}-${pad(mo)}-${pad(day)}`, label: `${pad(mo)}-${pad(day)}` };
 }
 
+/** The hour-bucket key for a timestamp — the base storage granularity. */
+export function hourKey(ms) {
+  return bucketOf(ms, "hour").key;
+}
+
+function hourKeyToMs(key) {
+  const [d, h] = key.split("T");
+  const [y, mo, da] = d.split("-").map(Number);
+  return new Date(y, mo - 1, da, Number(h), 0, 0, 0).getTime();
+}
+
+// How far back each resolution looks (kept modest so charts stay readable).
+const WINDOW_MS = {
+  hour: 48 * 3600_000,
+  day: 45 * 86400_000,
+  week: 26 * 7 * 86400_000,
+  month: 13 * 31 * 86400_000,
+};
+
+/** Ask the browser to keep this data from being evicted under storage pressure. */
+export async function requestPersistence() {
+  try {
+    if (navigator.storage?.persist) return await navigator.storage.persist();
+  } catch {
+    /* best effort */
+  }
+  return false;
+}
+
+/** Bump the session counter (call once per monitoring run). */
+export async function startSession() {
+  const db = await openDB();
+  const store = db.transaction(META, "readwrite").objectStore(META);
+  const m = (await reqAsync(store.get("meta"))) || { id: "meta", sessions: 0 };
+  m.sessions += 1;
+  await reqAsync(store.put(m));
+  db.close();
+}
+
 /**
- * Aggregate sessions into time buckets at the given resolution
- * ("hour" | "day" | "week" | "month"). Same response shape as daily(), plus a
- * `label` per point for the chart's x-axis and a `resolution` field.
+ * Add activity to an hour bucket. open/closed seconds ACCUMULATE; maxClosed is a
+ * running MAX (so re-sending the same value is idempotent, and separate sessions
+ * touching the same hour combine correctly).
+ */
+export async function addHourly(key, openInc, closedInc, maxClosed) {
+  const db = await openDB();
+  const store = db.transaction(HOURS, "readwrite").objectStore(HOURS);
+  const cur = (await reqAsync(store.get(key))) || { key, open: 0, closed: 0, maxClosed: 0 };
+  cur.open += openInc || 0;
+  cur.closed += closedInc || 0;
+  cur.maxClosed = Math.max(cur.maxClosed, maxClosed || 0);
+  await reqAsync(store.put(cur));
+  db.close();
+}
+
+async function allHours() {
+  const db = await openDB();
+  const rows = await reqAsync(db.transaction(HOURS, "readonly").objectStore(HOURS).getAll());
+  const meta = await reqAsync(db.transaction(META, "readonly").objectStore(META).get("meta"));
+  db.close();
+  return { rows: rows || [], meta };
+}
+
+/**
+ * Roll the hour buckets up to the requested resolution for display. The stored
+ * data is unchanged; only the grouping differs.
+ * @param {"hour"|"day"|"week"|"month"} resolution
  */
 export async function aggregate(resolution = "day") {
-  const rows = await allSessions();
+  const { rows, meta } = await allHours();
   const cutoff = Date.now() - (WINDOW_MS[resolution] ?? WINDOW_MS.day);
 
   const byKey = new Map();
-  for (const s of rows) {
-    if ((s.startedAt || 0) < cutoff) continue;
-    const { key, label } = bucketOf(s.startedAt || Date.now(), resolution);
-    const e = byKey.get(key) || { key, label, open: 0, closed: 0, sessions: 0, maxClosed: 0 };
-    e.open += s.openSeconds || 0;
-    e.closed += s.closedSeconds || 0;
-    e.maxClosed = Math.max(e.maxClosed, s.maxClosedSeconds || 0);
-    e.sessions += 1;
+  for (const h of rows) {
+    const ms = hourKeyToMs(h.key);
+    if (ms < cutoff) continue;
+    const { key, label } = bucketOf(ms, resolution);
+    const e = byKey.get(key) || { key, label, open: 0, closed: 0, maxClosed: 0 };
+    e.open += h.open || 0;
+    e.closed += h.closed || 0;
+    e.maxClosed = Math.max(e.maxClosed, h.maxClosed || 0);
     byKey.set(key, e);
   }
 
   const daysOut = [];
-  let totOpen = 0, totClosed = 0, totSessions = 0, overallMaxClosed = 0;
+  let totOpen = 0, totClosed = 0, overallMaxClosed = 0;
   for (const key of [...byKey.keys()].sort()) {
     const e = byKey.get(key);
     const known = e.open + e.closed;
     daysOut.push({
       date: e.key,
       label: e.label,
-      sessions: e.sessions,
       open_seconds: round(e.open, 1),
       closed_seconds: round(e.closed, 1),
       open_percentage: known > 0 ? round((e.open / known) * 100, 1) : 0,
@@ -215,7 +157,6 @@ export async function aggregate(resolution = "day") {
     });
     totOpen += e.open;
     totClosed += e.closed;
-    totSessions += e.sessions;
     overallMaxClosed = Math.max(overallMaxClosed, e.maxClosed);
   }
 
@@ -225,7 +166,7 @@ export async function aggregate(resolution = "day") {
     days: daysOut,
     totals: {
       days: daysOut.length,
-      sessions: totSessions,
+      sessions: meta?.sessions || 0,
       total_open_seconds: round(totOpen, 1),
       total_closed_seconds: round(totClosed, 1),
       open_percentage: known > 0 ? round((totOpen / known) * 100, 1) : 0,
@@ -234,9 +175,11 @@ export async function aggregate(resolution = "day") {
   };
 }
 
-/** Remove everything (handy for a "clear my data" action). */
+/** Remove all stored data (handy for a "clear my data" action). */
 export async function clearAll() {
   const db = await openDB();
-  await reqAsync(db.transaction(STORE, "readwrite").objectStore(STORE).clear());
+  const tx = db.transaction([HOURS, META], "readwrite");
+  await reqAsync(tx.objectStore(HOURS).clear());
+  await reqAsync(tx.objectStore(META).clear());
   db.close();
 }

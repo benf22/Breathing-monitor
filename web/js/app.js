@@ -32,8 +32,82 @@ let statusTimer = null;
 let lastMar = null; // most recent instantaneous MAR (for Calibrate capture buttons)
 let currentSessionId = null;
 let currentClientId = null;
-let sessionStartedAt = 0;
 let currentResolution = localStorage.getItem("bm.stats.res") || "day";
+
+// Fine-grained (per wall-clock hour) accounting accumulated in memory during a
+// session and flushed to the store. This is the base resolution; the Statistics
+// selector only rolls these up for display.
+let accByHour = new Map(); // hourKey -> { open, closed } seconds since last flush
+let maxByHour = new Map(); // hourKey -> longest continuous closed span (session)
+let closedRun = 0; // current ongoing closed-span length (s)
+let lastAccMs = null;
+let prevAccState = null;
+
+function bumpMax(hk, val) {
+  if (val > 0) maxByHour.set(hk, Math.max(maxByHour.get(hk) || 0, val));
+}
+
+// Attribute the time since the previous frame to the current wall-clock hour and
+// the smoothed state. Only counts frames with a detected face.
+function accountFrame(result) {
+  const now = Date.now();
+  if (!result.face) {
+    // Face lost: close out any ongoing closed run and pause accounting.
+    if (closedRun > 0) bumpMax(localStore.hourKey(now), closedRun);
+    closedRun = 0;
+    prevAccState = null;
+    lastAccMs = null;
+    return;
+  }
+  const st = result.state;
+  if (lastAccMs != null) {
+    const dt = (now - lastAccMs) / 1000;
+    if (dt > 0 && dt < 5) {
+      const hk = localStore.hourKey(now);
+      const e = accByHour.get(hk) || { open: 0, closed: 0 };
+      if (st === "open") e.open += dt;
+      else if (st === "closed") {
+        e.closed += dt;
+        closedRun += dt;
+      }
+      accByHour.set(hk, e);
+    }
+  }
+  // A closed span just ended → record its length in the hour it ended.
+  if (prevAccState === "closed" && st !== "closed") {
+    bumpMax(localStore.hourKey(now), closedRun);
+    closedRun = 0;
+  }
+  if (st !== "closed") closedRun = 0;
+  prevAccState = st;
+  lastAccMs = now;
+}
+
+function resetAccounting() {
+  accByHour = new Map();
+  maxByHour = new Map();
+  closedRun = 0;
+  lastAccMs = null;
+  prevAccState = null;
+}
+
+async function flushAccounting() {
+  // Reflect any ongoing closed run into the current hour's max.
+  if (closedRun > 0) bumpMax(localStore.hourKey(Date.now()), closedRun);
+  const keys = new Set([...accByHour.keys(), ...maxByHour.keys()]);
+  for (const hk of keys) {
+    const inc = accByHour.get(hk) || { open: 0, closed: 0 };
+    const mx = maxByHour.get(hk) || 0;
+    try {
+      await localStore.addHourly(hk, inc.open, inc.closed, mx);
+    } catch (e) {
+      console.warn("local store:", e);
+    }
+  }
+  // Increments are now persisted; clear them. Keep maxByHour (re-adds are
+  // idempotent since the store takes a max).
+  accByHour.clear();
+}
 
 const MAR_SCALE = 1.0; // meter/threshold display range (MAR is ~0..0.8+)
 const round2 = (v) => Math.round(v * 100) / 100;
@@ -82,7 +156,8 @@ async function startMonitoring() {
 
     currentSessionId = newSessionId();
     currentClientId = getClientId();
-    sessionStartedAt = Date.now();
+    resetAccounting();
+    localStore.startSession().catch((e) => console.warn("local store:", e));
     // Cloud upload only when an API base is configured; otherwise metadata lives
     // on-device in IndexedDB — no backend needed.
     const apiBase = (settings.cloud.apiBase || "").trim();
@@ -103,14 +178,11 @@ async function startMonitoring() {
     preview = new PreviewRenderer($("#preview"));
     preview.attach(sensor.videoElement);
 
-    // Periodic rollup: always persisted on-device; also uploaded if a backend
-    // is configured.
+    // Periodic flush: persist the accumulated hourly buckets on-device; also
+    // upload a session rollup if a backend is configured.
     rollupTimer = setInterval(() => {
-      const snap = pipeline.snapshot();
-      localStore
-        .recordRollup(currentSessionId, currentClientId, snap, sessionStartedAt)
-        .catch((e) => console.warn("local store:", e));
-      if (uploader) uploader.enqueueRollup(snap);
+      flushAccounting();
+      if (uploader) uploader.enqueueRollup(pipeline.snapshot());
     }, (settings.cloud.rollupSeconds || 30) * 1000);
     statusTimer = setInterval(refreshStats, 1000);
 
@@ -130,12 +202,8 @@ async function startMonitoring() {
 }
 
 function stopMonitoring() {
-  // Persist the session's final totals before tearing down.
-  if (pipeline && currentSessionId) {
-    localStore
-      .recordRollup(currentSessionId, currentClientId, pipeline.snapshot(), sessionStartedAt)
-      .catch(() => {});
-  }
+  // Persist the final accumulated hourly activity before tearing down.
+  flushAccounting();
   if (rollupTimer) clearInterval(rollupTimer), (rollupTimer = null);
   if (statusTimer) clearInterval(statusTimer), (statusTimer = null);
   if (uploader) uploader.stop(), (uploader = null);
@@ -160,6 +228,9 @@ function stopMonitoring() {
 function onFrame(result) {
   // Draw the face box + lip/nose landmarks over the preview video.
   if (preview) preview.setResult(result);
+
+  // Accumulate fine-grained (per-hour) activity for the stats store.
+  accountFrame(result);
 
   const indicator = $("#indicator");
   const mar = result.lips ? result.lips.mar.toFixed(3) : "—";
