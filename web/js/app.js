@@ -231,12 +231,16 @@ async function startMonitoring() {
       minFaceAreaRatio: settings.detection.minFaceAreaRatio,
     });
 
-    pipeline = new Pipeline(sensor, {
-      openThreshold: settings.detection.openThreshold,
-      closeThreshold: settings.detection.closeThreshold,
-      minOpenSeconds: settings.detection.minOpenSeconds,
-      minClosedSeconds: settings.detection.minClosedSeconds,
-    });
+    pipeline = new Pipeline(
+      sensor,
+      {
+        openThreshold: settings.detection.openThreshold,
+        closeThreshold: settings.detection.closeThreshold,
+        minOpenSeconds: settings.detection.minOpenSeconds,
+        minClosedSeconds: settings.detection.minClosedSeconds,
+      },
+      { talking: { ...settings.talking } }
+    );
 
     notifier = new Notifier(settings.notifications, toast);
     if (settings.notifications.enabled) await notifier.requestPermission();
@@ -358,6 +362,10 @@ function onFrame(result) {
 
   // Experimental nose-breathing signal (auto-scaled bar).
   updateNarMeter(result.nose ? result.nose.nar : null);
+
+  // Talking-detection live readout (for the Calibrate tab).
+  $("#talk-score").textContent = result.talkingScore != null ? result.talkingScore.toFixed(1) : "—";
+  $("#talk-state").textContent = result.talking ? "TALKING" : "quiet";
 
   // Alerts: suppressed while ignored; the open-alert uses the ignore-gated
   // continuous open-run duration (so a gap doesn't inflate it).
@@ -498,6 +506,11 @@ function refreshCalibrateUI() {
   $("#cal-close-val").textContent = d.closeThreshold.toFixed(2);
   $("#cal-mark-open").style.left = marPct(d.openThreshold) + "%";
   $("#cal-mark-close").style.left = marPct(d.closeThreshold) + "%";
+
+  const t = settings.talking;
+  $("#talk-enabled").checked = t.enabled;
+  $("#talk-sens").value = t.sensitivity;
+  $("#talk-sens-val").textContent = t.sensitivity.toFixed(2);
 }
 
 function applyThresholds(open, close) {
@@ -527,6 +540,21 @@ function initCalibrate() {
     applyThresholds(settings.detection.openThreshold, lastMar);
     toast(`Close threshold set to ${round2(Math.min(lastMar, settings.detection.openThreshold))}`, "info");
   });
+
+  const applyTalking = () => {
+    saveSettings(settings);
+    if (pipeline) pipeline.setTalkingConfig({ ...settings.talking });
+  };
+  $("#talk-enabled").addEventListener("change", (e) => {
+    settings.talking.enabled = e.target.checked;
+    applyTalking();
+  });
+  $("#talk-sens").addEventListener("input", (e) => {
+    settings.talking.sensitivity = parseFloat(e.target.value);
+    $("#talk-sens-val").textContent = settings.talking.sensitivity.toFixed(2);
+    applyTalking();
+  });
+
   refreshCalibrateUI();
 }
 

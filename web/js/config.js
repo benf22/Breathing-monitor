@@ -21,6 +21,11 @@ export const DEFAULT_SETTINGS = Object.freeze({
     minOpenSeconds: 0.15,
     minClosedSeconds: 0.15,
   },
+  talking: {
+    // Vision-only talking detection; ignores frames while you're speaking.
+    enabled: true,
+    sensitivity: 0.5, // 0..1, higher flags talking more readily
+  },
   notifications: {
     enabled: true,
     // Alert when the mouth stays OPEN (mouth-breathing) at least this long.

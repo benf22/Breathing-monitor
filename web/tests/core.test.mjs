@@ -133,4 +133,34 @@ assert.deepEqual(ignoreReasons({ face: {}, lips: null }), ["no-mar"]);
 assert.equal(isIgnored({ face: {}, lips: { mar: 0.3 } }), false);
 assert.deepEqual(ignoreReasons({ face: {}, lips: { mar: 0.3 } }), []);
 
+// --- talking detection (visual VAD) ---
+const { TalkingDetector } = await import("../js/core/talking.js");
+const td = new TalkingDetector({ sensitivity: 0.5 });
+// Steady mouth (breathing-like): should never flag talking.
+for (let t = 0; t <= 2000; t += 50) td.update(t, 0.2 + (t % 100 === 0 ? 0.005 : 0));
+assert.equal(td.isTalking, false, "steady MAR must not be talking");
+
+// Fast oscillation (~4 Hz) sustained: should flag talking after onset.
+td.reset();
+let talking = false;
+for (let t = 0; t <= 2000; t += 40) {
+  const mar = 0.3 + 0.18 * Math.sin((2 * Math.PI * 4 * t) / 1000);
+  talking = td.update(t, mar);
+}
+assert.equal(talking, true, "fast MAR oscillation should be detected as talking");
+
+// A single slow open (yawn-like) is not talking.
+td.reset();
+let yawn = false;
+for (let t = 0; t <= 2000; t += 50) {
+  const mar = 0.1 + 0.5 * Math.sin((Math.PI * t) / 2000); // one slow hump
+  yawn = td.update(t, mar);
+}
+assert.equal(yawn, false, "a single slow open must not be talking");
+
+// Disabled → never talking.
+const off = new TalkingDetector({ enabled: false });
+for (let t = 0; t <= 2000; t += 40) off.update(t, 0.3 + 0.2 * Math.sin(t / 40));
+assert.equal(off.isTalking, false, "disabled detector never flags");
+
 console.log("ALL JS CORE TESTS PASSED");

@@ -16,6 +16,11 @@ export const IGNORE_RULES = [
     label: "No MAR signal",
     test: (r) => !r || !r.lips,
   },
+  {
+    id: "talking",
+    label: "Talking",
+    test: (r) => r?.talking === true,
+  },
   // Add further situations here, e.g.:
   // { id: "low-light", label: "Too dark", test: (r) => r?.brightness != null && r.brightness < 0.1 },
 ];

@@ -154,6 +154,28 @@
            so even tiny changes are amplified. A rising “recent range” with a
            bar that pulses in time with your breathing is the signal you’re
            looking for; a bar that only jerks when you move your head is not.</p>
+
+        <hr class="sep" />
+
+        <h2>Talking detection <span class="tag-exp">experimental</span></h2>
+        <p class="muted">Ignores frames while you're <b>talking</b> (rapid mouth
+           movement) so speech isn't counted as breathing. Vision-only — it can
+           occasionally react to chewing/laughing. Talk normally and watch the
+           state flip to TALKING; adjust sensitivity so speech is caught but
+           breathing isn't.</p>
+
+        <div class="cal-live">
+          <div class="cal-readout"><span id="talk-score">—</span><label>talk score (cross/s)</label></div>
+          <div class="cal-readout"><span id="talk-state">—</span><label>state</label></div>
+        </div>
+
+        <div class="cal-controls">
+          <label class="row"><input id="talk-enabled" type="checkbox" /> Enable talking detection</label>
+          <div class="cal-row">
+            <label for="talk-sens">Sensitivity: <b id="talk-sens-val">0.50</b></label>
+            <input id="talk-sens" type="range" min="0" max="1" step="0.05" value="0.5" />
+          </div>
+        </div>
       </div>
     </section>
 
