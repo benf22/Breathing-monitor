@@ -8,7 +8,7 @@ import * as localStore from "./storage/localStore.js";
 import { Notifier } from "./notifications.js";
 import { PreviewRenderer } from "./ui/overlay.js";
 import { initTabs } from "./ui/tabs.js";
-import { lineChart, stateRibbon, LiveTrace } from "./ui/charts.js";
+import { lineChart, stateRibbon, bioChart, LiveTrace } from "./ui/charts.js";
 import { APP_VERSION } from "./version.js";
 import {
   loadSettings,
@@ -58,19 +58,53 @@ function renderLive() {
   });
 }
 
-// Moving average of confirmed closed-span durations over the last hour.
-let closedSpans = []; // [{ t: endMs, dur }]
+// Moving average of closed-span durations over the last hour, including the
+// CURRENTLY-ongoing closed span so the number rises live while the mouth is
+// closed (not only when a span ends).
+let closedSpans = []; // completed spans: [{ t: endMs, dur }]
+let avgTrace = []; // biofeedback samples: [{ t, value }]
+let lastAvgPushSec = 0;
 
-function updateAvgClose() {
+function currentAvgCloseSeconds() {
   const cutoff = Date.now() - 3600_000;
   closedSpans = closedSpans.filter((s) => s.t >= cutoff);
-  const txt = closedSpans.length
-    ? (closedSpans.reduce((a, s) => a + s.dur, 0) / closedSpans.length).toFixed(1) + "s"
-    : "—";
+  let sum = 0, count = 0;
+  for (const s of closedSpans) { sum += s.dur; count += 1; }
+  // Fold in the ongoing closed span, growing in real time.
+  if (pipeline && pipeline.smoother.state === "closed" && pipeline.lastResult) {
+    const ongoing = pipeline.smoother.timeInState(pipeline.lastResult.timestamp);
+    if (ongoing > 0) { sum += ongoing; count += 1; }
+  }
+  return count ? sum / count : null;
+}
+
+function updateAvgClose() {
+  const avg = currentAvgCloseSeconds();
+  const txt = avg != null ? avg.toFixed(1) + "s" : "—";
   const a = $("#stat-avg-close");
   const b = $("#ambient-metric");
   if (a) a.textContent = txt;
   if (b) b.textContent = txt;
+  // Sample once per second into the biofeedback trace (keep ~3 min).
+  const nowSec = Math.floor(Date.now() / 1000);
+  if (avg != null && nowSec !== lastAvgPushSec) {
+    lastAvgPushSec = nowSec;
+    avgTrace.push({ t: Date.now(), value: avg });
+    const cutoff = Date.now() - 180_000;
+    while (avgTrace.length && avgTrace[0].t < cutoff) avgTrace.shift();
+  }
+}
+
+function renderBio() {
+  bioChart($("#bio-chart"), avgTrace.slice(), {
+    unit: "s",
+    emptyMsg: pipeline ? "Building trace…" : "Start monitoring to see the biofeedback trace.",
+  });
+}
+
+function renderLiveViews() {
+  renderLive();
+  renderBio();
 }
 
 // Distraction-free ambient tab: green = closed, red = open, gray = not detected.
@@ -197,6 +231,8 @@ async function startMonitoring() {
     currentClientId = getClientId();
     resetAccounting();
     liveTrace.reset();
+    avgTrace = [];
+    lastAvgPushSec = 0;
     localStore.startSession().catch((e) => console.warn("local store:", e));
     // Cloud upload only when an API base is configured; otherwise metadata lives
     // on-device in IndexedDB — no backend needed.
@@ -225,7 +261,7 @@ async function startMonitoring() {
       if (uploader) uploader.enqueueRollup(pipeline.snapshot());
     }, (settings.cloud.rollupSeconds || 30) * 1000);
     statusTimer = setInterval(refreshStats, 1000);
-    liveTimer = setInterval(renderLive, 500);
+    liveTimer = setInterval(renderLiveViews, 500);
 
     btn.textContent = "Stop monitoring";
     btn.classList.add("stop");
@@ -266,7 +302,7 @@ function stopMonitoring() {
   $("#cal-state").textContent = "—";
   $("#cal-fill").style.width = "0%";
   resetNarMeter();
-  renderLive();
+  renderLiveViews();
   updateAmbient(null);
   $("#ambient-hint").textContent = "Start monitoring on the Monitor tab, then leave this tab open.";
 }
@@ -281,6 +317,7 @@ function onFrame(result) {
   const liveState = result.face ? result.state : "unknown";
   liveTrace.push(Date.now(), liveState);
   updateAmbient(result);
+  updateAvgClose(); // live: grows while the mouth is currently closed
 
   const indicator = $("#indicator");
   const mar = result.lips ? result.lips.mar.toFixed(3) : "—";
@@ -648,7 +685,7 @@ function boot() {
       renderLive();
     });
   });
-  renderLive();
+  renderLiveViews();
 
   // Graph resolution selector (hour/day/week/month).
   const seg = $("#res-seg");

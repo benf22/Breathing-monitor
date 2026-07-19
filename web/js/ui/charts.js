@@ -220,3 +220,48 @@ export function stateRibbon(container, series, opts = {}) {
       ${rects}${xLabels}
     </svg>`;
 }
+
+/**
+ * Biofeedback-style live line: a value over time, auto-ranged to the recent
+ * min/max (so small changes are visible) with a soft area fill. Updated ~2x/s.
+ */
+export function bioChart(container, series, opts = {}) {
+  const unit = opts.unit || "";
+  if (!series.length) {
+    container.innerHTML = `<div class="empty">${opts.emptyMsg || "Waiting…"}</div>`;
+    return;
+  }
+  const vals = series.map((d) => d.value);
+  let mn = Math.min(...vals), mx = Math.max(...vals);
+  if (mx - mn < 0.5) { const c = (mx + mn) / 2; mn = Math.max(0, c - 0.25); mx = c + 0.25; }
+  const rp = (mx - mn) * 0.12;
+  mn = Math.max(0, mn - rp);
+  mx += rp;
+
+  const n = series.length;
+  const t0 = series[0].t, t1 = series[n - 1].t;
+  const span = Math.max(1, t1 - t0);
+  const x = (t) => (n === 1 ? PAD.l + PLOT_W : PAD.l + ((t - t0) / span) * PLOT_W);
+  const y = (v) => PAD.t + PLOT_H - ((v - mn) / (mx - mn)) * PLOT_H;
+
+  const gridY = [mn, mx]
+    .map((val) => {
+      const yy = y(val);
+      return `<line x1="${PAD.l}" y1="${yy}" x2="${W - PAD.r}" y2="${yy}" class="c-grid"/>
+              <text x="${PAD.l - 5}" y="${yy + 3}" class="c-axis" text-anchor="end">${val.toFixed(1)}</text>`;
+    })
+    .join("");
+
+  const linePts = series.map((d) => `${x(d.t)},${y(d.value)}`).join(" ");
+  const area = `<polygon points="${x(t0)},${y(mn)} ${linePts} ${x(t1)},${y(mn)}" fill="var(--accent)" opacity="0.13"/>`;
+  const line = `<polyline points="${linePts}" fill="none" stroke="var(--accent)" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>`;
+  const lastV = series[n - 1].value;
+  const lastLbl = `<text x="${W - PAD.r}" y="${Math.max(y(lastV) - 6, PAD.t + 9)}" class="c-label" text-anchor="end">${lastV.toFixed(1)}${unit}</text>`;
+  const xLabels = `<text x="${PAD.l}" y="${H - 8}" class="c-axis" text-anchor="start">${hms(t0)}</text>
+                   <text x="${W - PAD.r}" y="${H - 8}" class="c-axis" text-anchor="end">${hms(t1)}</text>`;
+
+  container.innerHTML = `
+    <svg viewBox="0 0 ${W} ${H}" role="img" aria-label="avg closed span biofeedback">
+      ${gridY}${area}${line}${lastLbl}${xLabels}
+    </svg>`;
+}
