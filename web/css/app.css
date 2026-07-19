@@ -56,8 +56,8 @@ main { max-width: 900px; margin: 0 auto; padding: 16px; }
 }
 .preview-card { padding: 8px; }
 #preview {
-  width: 100%; display: block; border-radius: 10px; background: #000;
-  aspect-ratio: 4 / 3; object-fit: cover;
+  width: 100%; height: auto; display: block; border-radius: 10px; background: #000;
+  max-height: 70vh;
 }
 .preview-meta { display: flex; justify-content: space-between; align-items: center; gap: 8px; color: var(--muted); padding: 8px 6px 2px; font-size: 13px; }
 .legend { display: inline-flex; align-items: center; gap: 6px; }

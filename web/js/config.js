@@ -12,6 +12,9 @@ export const DEFAULT_SETTINGS = Object.freeze({
     facingMode: "user", // front camera — phone on desk facing you
     frameWidth: 640,
     frameHeight: 480,
+    // "auto" rotates the frame upright only when it arrives sideways; or force
+    // "0" | "90" | "180" | "270".
+    rotation: "auto",
   },
   detection: {
     minFaceConfidence: 0.5,

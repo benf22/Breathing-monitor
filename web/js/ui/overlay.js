@@ -20,8 +20,9 @@ export class PreviewRenderer {
     this._raf = null;
   }
 
-  attach(video) {
-    this._video = video;
+  /** @param {() => (HTMLVideoElement|HTMLCanvasElement|null)} getSource */
+  attach(getSource) {
+    this._getSource = getSource;
     this._loop();
   }
 
@@ -32,16 +33,20 @@ export class PreviewRenderer {
   stop() {
     if (this._raf) cancelAnimationFrame(this._raf);
     this._raf = null;
-    this._video = null;
+    this._getSource = null;
   }
 
   _loop() {
     this._raf = requestAnimationFrame(() => this._loop());
-    const video = this._video;
-    if (!video || video.readyState < 2) return;
+    const src = this._getSource ? this._getSource() : null;
+    if (!src) return;
+    // Source can be a <video> or a rotated <canvas>.
+    const srcW = src.videoWidth || src.width;
+    const srcH = src.videoHeight || src.height;
+    if (!srcW || !srcH || (src.readyState !== undefined && src.readyState < 2)) return;
 
     const cw = this.canvas.clientWidth || 480;
-    const ch = Math.round((cw * video.videoHeight) / video.videoWidth) || 360;
+    const ch = Math.round((cw * srcH) / srcW) || 360;
     if (this.canvas.width !== cw || this.canvas.height !== ch) {
       this.canvas.width = cw;
       this.canvas.height = ch;
@@ -52,7 +57,7 @@ export class PreviewRenderer {
     ctx.save();
     ctx.translate(this.canvas.width, 0);
     ctx.scale(-1, 1);
-    ctx.drawImage(video, 0, 0, this.canvas.width, this.canvas.height);
+    ctx.drawImage(src, 0, 0, this.canvas.width, this.canvas.height);
 
     const r = this._result;
     if (r && r.face) {

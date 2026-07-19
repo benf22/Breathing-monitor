@@ -233,6 +233,7 @@ async function startMonitoring() {
       facingMode: settings.capture.facingMode,
       width: settings.capture.frameWidth,
       height: settings.capture.frameHeight,
+      rotation: settings.capture.rotation,
       minFaceConfidence: settings.detection.minFaceConfidence,
       minFaceAreaRatio: settings.detection.minFaceAreaRatio,
     });
@@ -276,7 +277,7 @@ async function startMonitoring() {
     await pipeline.start();
 
     preview = new PreviewRenderer($("#preview"));
-    preview.attach(sensor.videoElement);
+    preview.attach(() => (sensor ? sensor.displaySource : null));
 
     // Periodic flush: persist the accumulated hourly buckets on-device; also
     // upload a session rollup if a backend is configured.
@@ -424,6 +425,7 @@ function populateConfigForm() {
   };
   set("intervalMs", settings.capture.intervalMs);
   set("facingMode", settings.capture.facingMode);
+  set("rotation", settings.capture.rotation);
   set("openThreshold", settings.detection.openThreshold);
   set("closeThreshold", settings.detection.closeThreshold);
   set("minOpenSeconds", settings.detection.minOpenSeconds);
@@ -451,6 +453,7 @@ function bindConfigForm() {
         ...settings.capture,
         intervalMs: parseInt(f.intervalMs.value, 10),
         facingMode: f.facingMode.value,
+        rotation: f.rotation.value,
       },
       detection: {
         ...settings.detection,
@@ -480,6 +483,7 @@ function bindConfigForm() {
     }
     saveSettings(settings);
     if (notifier) notifier.updateConfig(settings.notifications);
+    if (sensor) sensor.setRotation(settings.capture.rotation); // rotation applies live
     // Detection thresholds can apply live; capture changes need a restart.
     if (pipeline) {
       pipeline.updateDetection({
