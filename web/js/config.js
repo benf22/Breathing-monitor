@@ -38,6 +38,13 @@ export const DEFAULT_SETTINGS = Object.freeze({
     // Periodic "take a breathing break" reminder; 0 disables.
     breathingReminderMinutes: 30,
   },
+  baseline: {
+    // Periodically pause biofeedback to sample the user's unbiased "baseline"
+    // habits. On for onMinutes, then off (baseline) for offMinutes, repeating.
+    enabled: true,
+    onMinutes: 5,
+    offMinutes: 1,
+  },
   cloud: {
     // "" = same origin as the served PWA. Set to a full URL to point the phone
     // at a central server on your LAN, e.g. "http://192.168.1.20:8000".

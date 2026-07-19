@@ -49,6 +49,7 @@
             <div id="indicator-label">…</div>
           </div>
           <button id="toggle-btn" class="primary">Start monitoring</button>
+          <div id="bio-mode" class="bio-mode"></div>
 
           <div class="stat-tiles">
             <div class="tile"><span id="stat-open-pct">0%</span><label>open</label></div>
@@ -282,6 +283,21 @@
         </fieldset>
 
         <fieldset>
+          <legend>Biofeedback schedule (baseline sampling)</legend>
+          <p class="muted small">Periodically pause feedback to measure your real
+             habits. During a baseline the Live tab stays green and no alerts
+             fire, but detection + stats keep running. Compared in Statistics →
+             Baselines.</p>
+          <label class="row"><input name="baselineEnabled" type="checkbox" /> Enable baseline sampling</label>
+          <label>Feedback ON minutes
+            <input name="baselineOn" type="number" min="0.5" step="0.5" />
+          </label>
+          <label>Baseline (feedback OFF) minutes
+            <input name="baselineOff" type="number" min="0.5" step="0.5" />
+          </label>
+        </fieldset>
+
+        <fieldset>
           <legend>Storage</legend>
           <p class="muted small">Metadata is always saved <b>on this device</b>
              (IndexedDB) and the Statistics tab reads it from there — no server
@@ -336,6 +352,12 @@
 
         <h3>% mouth-open per period</h3>
         <div id="daily-bars" class="daily-bars"></div>
+
+        <h3>Baselines — does the feedback help?</h3>
+        <p class="muted small">Avg closed-span during each baseline (feedback-off)
+           period vs the feedback-on period just before it. If the feedback is
+           working, the "with feedback" line sits above the baseline line.</p>
+        <div id="chart-baseline" class="chart"></div>
       </div>
     </section>
   </main>

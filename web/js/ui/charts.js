@@ -128,6 +128,64 @@ function wireTooltip(container, series, { x, y, unit, fmt }) {
   svg.addEventListener("pointerleave", hide);
 }
 
+/**
+ * Multi-series line chart with a legend (for ≥2 series, per the dataviz method).
+ * @param {{label:string,color:string,points:{t:number,value:number}[]}[]} series
+ */
+export function multiLineChart(container, series, opts = {}) {
+  const unit = opts.unit || "";
+  const all = series.flatMap((s) => s.points);
+  if (!all.length) {
+    container.innerHTML = `<div class="empty">${opts.emptyMsg || "No data yet."}</div>`;
+    return;
+  }
+  const ts = all.map((p) => p.t);
+  const vals = all.map((p) => p.value);
+  const t0 = Math.min(...ts), t1 = Math.max(...ts);
+  const span = Math.max(1, t1 - t0);
+  let mn = Math.min(...vals, 0), mx = Math.max(...vals);
+  if (mx - mn < 0.5) mx = mn + 0.5;
+  mx += (mx - mn) * 0.1;
+  const x = (t) => (ts.length <= 1 ? PAD.l + PLOT_W / 2 : PAD.l + ((t - t0) / span) * PLOT_W);
+  const y = (v) => PAD.t + PLOT_H - ((v - mn) / (mx - mn)) * PLOT_H;
+
+  const grid = [mn, (mn + mx) / 2, mx]
+    .map((val) => {
+      const yy = y(val);
+      return `<line x1="${PAD.l}" y1="${yy}" x2="${W - PAD.r}" y2="${yy}" class="c-grid"/>
+              <text x="${PAD.l - 5}" y="${yy + 3}" class="c-axis" text-anchor="end">${val.toFixed(1)}</text>`;
+    })
+    .join("");
+
+  const lines = series
+    .map((s) => {
+      if (!s.points.length) return "";
+      const pts = s.points.map((p) => `${x(p.t)},${y(p.value)}`).join(" ");
+      const dots = s.points
+        .map((p) => `<circle cx="${x(p.t)}" cy="${y(p.value)}" r="3" fill="${s.color}" stroke="var(--panel)" stroke-width="1.5"/>`)
+        .join("");
+      const line = s.points.length > 1
+        ? `<polyline points="${pts}" fill="none" stroke="${s.color}" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>`
+        : "";
+      return line + dots;
+    })
+    .join("");
+
+  const xLabels = `<text x="${PAD.l}" y="${H - 8}" class="c-axis" text-anchor="start">${hm(t0)}</text>
+                   <text x="${W - PAD.r}" y="${H - 8}" class="c-axis" text-anchor="end">${hm(t1)}</text>`;
+  const legend = series
+    .map((s) => `<span class="lg-item"><span class="lg-dot" style="background:${s.color}"></span>${s.label}</span>`)
+    .join("");
+
+  container.innerHTML = `
+    <div class="chart-legend">${legend}</div>
+    <svg viewBox="0 0 ${W} ${H}" role="img" aria-label="${opts.aria || "comparison"}">
+      ${grid}${lines}${xLabels}
+    </svg>`;
+}
+
+// hm() is defined below with the live-trace helpers.
+
 // ---- Live trace (real-time feedback) -------------------------------------
 
 const p2 = (n) => String(n).padStart(2, "0");

@@ -55,6 +55,18 @@ const adj = await store.aggregate("hour");
 assert.equal(adj.days[0].open_seconds, 0, "open clamped at 0 after over-subtraction");
 
 await store.clearAll();
+
+// Biofeedback periods store.
+await store.addPeriod({ start: 1000, end: 2000, kind: "on", openS: 10, closedS: 50, spanSum: 40, spanCount: 4 });
+await store.addPeriod({ start: 2000, end: 3000, kind: "baseline", openS: 20, closedS: 40, spanSum: 30, spanCount: 3 });
+const ps = await store.periods();
+assert.equal(ps.length, 2);
+assert.equal(ps[0].kind, "on");
+assert.equal(ps[1].kind, "baseline");
+assert.equal(ps[1].spanSum / ps[1].spanCount, 10); // baseline avg span
+
+await store.clearAll();
+assert.equal((await store.periods()).length, 0);
 const empty = await store.aggregate("day");
 assert.equal(empty.days.length, 0);
 assert.equal(empty.totals.sessions, 0);

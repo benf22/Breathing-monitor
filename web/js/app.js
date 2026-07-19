@@ -8,7 +8,7 @@ import * as localStore from "./storage/localStore.js";
 import { Notifier } from "./notifications.js";
 import { PreviewRenderer } from "./ui/overlay.js";
 import { initTabs } from "./ui/tabs.js";
-import { lineChart, stateRibbon, bioChart, LiveTrace } from "./ui/charts.js";
+import { lineChart, stateRibbon, bioChart, multiLineChart, LiveTrace } from "./ui/charts.js";
 import { isIgnored, ignoreLabels, ignoreReasons } from "./core/ignore.js";
 import { APP_VERSION } from "./version.js";
 import {
@@ -52,6 +52,81 @@ let ignoredNow = false; // whether the latest frame is being ignored
 let recentOpen = [];
 let wasTalking = false;
 
+// Biofeedback on/off scheduler + per-period accounting (baseline sampling).
+let bioOn = true; // is feedback (alerts + Live color) active right now
+let bioTimer = null;
+let periodStart = null;
+let periodKind = "on";
+let periodOpen = 0, periodClosed = 0, periodSpanSum = 0, periodSpanCount = 0;
+
+function startPeriod(kind, startMs) {
+  periodStart = startMs;
+  periodKind = kind;
+  periodOpen = 0;
+  periodClosed = 0;
+  periodSpanSum = 0;
+  periodSpanCount = 0;
+}
+
+function finalizePeriod(endMs) {
+  if (periodStart == null) return;
+  if (periodOpen + periodClosed > 0.5) {
+    localStore
+      .addPeriod({
+        start: periodStart,
+        end: endMs,
+        kind: periodKind,
+        openS: Math.round(periodOpen * 10) / 10,
+        closedS: Math.round(periodClosed * 10) / 10,
+        spanSum: Math.round(periodSpanSum * 10) / 10,
+        spanCount: periodSpanCount,
+      })
+      .catch((e) => console.warn("period store:", e));
+  }
+  periodStart = null;
+}
+
+function updateBioMode() {
+  const el = $("#bio-mode");
+  if (!el) return;
+  if (!settings.baseline.enabled || !pipeline) {
+    el.textContent = "";
+    el.classList.remove("baseline");
+    return;
+  }
+  el.textContent = bioOn ? "Feedback: ON" : "Baseline — feedback paused";
+  el.classList.toggle("baseline", !bioOn);
+}
+
+function scheduleBioToggle() {
+  const mins = bioOn ? settings.baseline.onMinutes : settings.baseline.offMinutes;
+  bioTimer = setTimeout(() => {
+    const now = Date.now();
+    finalizePeriod(now);
+    bioOn = !bioOn;
+    startPeriod(bioOn ? "on" : "baseline", now);
+    resetAmbientColor();
+    updateBioMode();
+    scheduleBioToggle();
+  }, Math.max(0.5, mins || 1) * 60000);
+}
+
+function startBioSchedule() {
+  bioOn = true;
+  if (settings.baseline.enabled) {
+    startPeriod("on", Date.now());
+    scheduleBioToggle();
+  }
+  updateBioMode();
+}
+
+function stopBioSchedule() {
+  if (bioTimer) clearTimeout(bioTimer), (bioTimer = null);
+  finalizePeriod(Date.now());
+  bioOn = true;
+  updateBioMode();
+}
+
 // Live real-time MAR trace for the Monitor tab (online feedback).
 const liveTrace = new LiveTrace();
 let liveTimer = null;
@@ -89,8 +164,8 @@ function updateAvgClose() {
   const txt = avg != null ? avg.toFixed(1) + "s" : "—";
   const a = $("#stat-avg-close");
   const b = $("#ambient-metric");
-  if (a) a.textContent = txt;
-  if (b) b.textContent = txt;
+  if (a) a.textContent = txt; // Monitor tab always shows it
+  if (b) b.textContent = bioOn ? txt : ""; // hidden during a baseline (no feedback)
   // Sample once per second into the biofeedback trace (keep ~3 min).
   const nowSec = Math.floor(Date.now() / 1000);
   if (avg != null && nowSec !== lastAvgPushSec) {
@@ -127,9 +202,15 @@ function resetAmbientColor() {
   ambPendingState = null;
 }
 
-function updateAmbient(result, ignored, talkingIgnored) {
+function updateAmbient(result, ignored, talkingIgnored, bioActive = true) {
   const amb = $("#ambient");
   if (!amb) return;
+  // Baseline (feedback off): show no feedback — hold green, blank the label.
+  if (!bioActive) {
+    amb.dataset.state = "closed";
+    $("#ambient-state").textContent = "";
+    return;
+  }
   const target = !result || ignored ? "unknown" : result.state === "open" ? "open" : result.state === "closed" ? "closed" : "unknown";
   const now = Date.now();
 
@@ -185,6 +266,7 @@ function accountFrame(result, ignored) {
         e.open += dt;
         openRun += dt;
         sessionOpen += dt;
+        if (periodStart != null) periodOpen += dt;
         recentOpen.push({ t: now, dt });
         const keepFrom = now - 5000;
         while (recentOpen.length && recentOpen[0].t < keepFrom) recentOpen.shift();
@@ -192,6 +274,7 @@ function accountFrame(result, ignored) {
         e.closed += dt;
         closedRun += dt;
         sessionClosed += dt;
+        if (periodStart != null) periodClosed += dt;
       }
       accByHour.set(hk, e);
     }
@@ -200,7 +283,13 @@ function accountFrame(result, ignored) {
   // The duration is the ignore-gated run, so ignored gaps never inflate it.
   if (prevAccState === "closed" && st !== "closed") {
     bumpMax(localStore.hourKey(now), closedRun);
-    if (closedRun > 0) closedSpans.push({ t: now, dur: closedRun });
+    if (closedRun > 0) {
+      closedSpans.push({ t: now, dur: closedRun });
+      if (periodStart != null) {
+        periodSpanSum += closedRun;
+        periodSpanCount += 1;
+      }
+    }
     closedRun = 0;
   }
   if (st !== "closed") closedRun = 0;
@@ -327,6 +416,7 @@ async function startMonitoring() {
     liveTrace.reset();
     avgTrace = [];
     lastAvgPushSec = 0;
+    startBioSchedule();
     localStore.startSession().catch((e) => console.warn("local store:", e));
     // Cloud upload only when an API base is configured; otherwise metadata lives
     // on-device in IndexedDB — no backend needed.
@@ -376,6 +466,7 @@ async function startMonitoring() {
 function stopMonitoring() {
   // Persist the final accumulated hourly activity before tearing down.
   flushAccounting();
+  stopBioSchedule();
   if (rollupTimer) clearInterval(rollupTimer), (rollupTimer = null);
   if (statusTimer) clearInterval(statusTimer), (statusTimer = null);
   if (liveTimer) clearInterval(liveTimer), (liveTimer = null);
@@ -421,7 +512,7 @@ function onFrame(result) {
   accountFrame(result, ignored);
   // Live binary state trace + ambient tab (ignored → gap / gray).
   liveTrace.push(Date.now(), ignored ? "unknown" : result.state);
-  updateAmbient(result, ignored, talkingIgnored);
+  updateAmbient(result, ignored, talkingIgnored, bioOn);
   updateAvgClose(); // live: grows while the mouth is currently closed (gated)
 
   const indicator = $("#indicator");
@@ -457,10 +548,10 @@ function onFrame(result) {
   $("#talk-score").textContent = result.talkingScore != null ? result.talkingScore.toFixed(1) : "—";
   $("#talk-state").textContent = result.talking ? "TALKING" : "quiet";
 
-  // Alerts: suppressed while ignored; the open-alert uses the ignore-gated
-  // continuous open-run duration (so a gap doesn't inflate it).
+  // Alerts: suppressed while ignored OR during a baseline (feedback off); the
+  // open-alert uses the ignore-gated continuous open-run duration.
   if (notifier) {
-    if (ignored) notifier.suppress();
+    if (ignored || !bioOn) notifier.suppress();
     else notifier.onState(state, openRun);
   }
 }
@@ -510,6 +601,9 @@ function populateConfigForm() {
   set("notifEnabled", settings.notifications.enabled);
   set("mouthOpenAlertSeconds", settings.notifications.mouthOpenAlertSeconds);
   set("breathingReminderMinutes", settings.notifications.breathingReminderMinutes);
+  set("baselineEnabled", settings.baseline.enabled);
+  set("baselineOn", settings.baseline.onMinutes);
+  set("baselineOff", settings.baseline.offMinutes);
   set("apiBase", settings.cloud.apiBase);
   set("uploadEnabled", settings.cloud.uploadEnabled);
   set("rollupSeconds", settings.cloud.rollupSeconds);
@@ -538,6 +632,12 @@ function bindConfigForm() {
         minClosedSeconds: num(f.minClosedSeconds),
         minFaceConfidence: num(f.minFaceConfidence),
         minFaceAreaRatio: num(f.minFaceAreaRatio),
+      },
+      baseline: {
+        ...settings.baseline,
+        enabled: f.baselineEnabled.checked,
+        onMinutes: Math.max(0.5, num(f.baselineOn) || 5),
+        offMinutes: Math.max(0.5, num(f.baselineOff) || 1),
       },
       notifications: {
         ...settings.notifications,
@@ -715,6 +815,7 @@ async function loadStatistics() {
     renderCharts(data.days || []);
     renderDaily(data.days || []);
     renderTotals(data.totals || {});
+    renderBaselines();
     const unit = base ? "day" : currentResolution;
     status.textContent =
       data.days && data.days.length
@@ -730,6 +831,45 @@ function renderTotals(t) {
   $("#agg-sessions").textContent = t.sessions ?? 0;
   $("#agg-open-pct").textContent = (t.open_percentage ?? 0).toFixed(1) + "%";
   $("#agg-open-hours").textContent = ((t.total_open_seconds ?? 0) / 3600).toFixed(1) + "h";
+}
+
+async function renderBaselines() {
+  const el = $("#chart-baseline");
+  if (!el) return;
+  let ps = [];
+  try {
+    ps = await localStore.periods();
+  } catch {
+    /* ignore */
+  }
+  const metric = (p) => (p.spanCount > 0 ? p.spanSum / p.spanCount : null); // avg closed span
+  const onPts = [], blPts = [];
+  for (let i = 0; i < ps.length; i++) {
+    if (ps[i].kind !== "baseline") continue;
+    const bl = ps[i];
+    const blm = metric(bl);
+    if (blm != null) blPts.push({ t: bl.end, value: blm });
+    let prevOn = null;
+    for (let j = i - 1; j >= 0; j--) {
+      if (ps[j].kind === "on") { prevOn = ps[j]; break; }
+    }
+    if (prevOn) {
+      const m = metric(prevOn);
+      if (m != null) onPts.push({ t: bl.end, value: m });
+    }
+  }
+  multiLineChart(
+    el,
+    [
+      { label: "With feedback", color: "var(--accent)", points: onPts },
+      { label: "Baseline (off)", color: "#ffd166", points: blPts },
+    ],
+    {
+      unit: "s",
+      aria: "baseline vs feedback average closed span",
+      emptyMsg: "No baseline periods yet — enable baseline sampling in Config and monitor a few cycles.",
+    }
+  );
 }
 
 function renderCharts(days) {

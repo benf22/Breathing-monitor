@@ -10,9 +10,10 @@
 // covers "save metadata centrally, read it from another tab" with no server.
 
 const DB_NAME = "breathing-monitor";
-const DB_VERSION = 2;
+const DB_VERSION = 3;
 const HOURS = "hours"; // keyed by hour key "YYYY-MM-DDTHH"
 const META = "meta"; // singleton { id:"meta", sessions }
+const PERIODS = "periods"; // biofeedback on/baseline periods
 
 function openDB() {
   return new Promise((resolve, reject) => {
@@ -21,6 +22,7 @@ function openDB() {
       const db = req.result;
       if (!db.objectStoreNames.contains(HOURS)) db.createObjectStore(HOURS, { keyPath: "key" });
       if (!db.objectStoreNames.contains(META)) db.createObjectStore(META, { keyPath: "id" });
+      if (!db.objectStoreNames.contains(PERIODS)) db.createObjectStore(PERIODS, { keyPath: "id", autoIncrement: true });
     };
     req.onsuccess = () => resolve(req.result);
     req.onerror = () => reject(req.error);
@@ -177,11 +179,33 @@ export async function aggregate(resolution = "day") {
   };
 }
 
+// -- biofeedback on/baseline periods --------------------------------------
+
+/**
+ * Record a completed period.
+ * @param {{start:number, end:number, kind:"on"|"baseline", openS:number,
+ *          closedS:number, spanSum:number, spanCount:number}} rec
+ */
+export async function addPeriod(rec) {
+  const db = await openDB();
+  await reqAsync(db.transaction(PERIODS, "readwrite").objectStore(PERIODS).add(rec));
+  db.close();
+}
+
+/** All recorded periods, oldest first (last `limit`). */
+export async function periods(limit = 1000) {
+  const db = await openDB();
+  const rows = await reqAsync(db.transaction(PERIODS, "readonly").objectStore(PERIODS).getAll());
+  db.close();
+  return (rows || []).sort((a, b) => a.start - b.start).slice(-limit);
+}
+
 /** Remove all stored data (handy for a "clear my data" action). */
 export async function clearAll() {
   const db = await openDB();
-  const tx = db.transaction([HOURS, META], "readwrite");
+  const tx = db.transaction([HOURS, META, PERIODS], "readwrite");
   await reqAsync(tx.objectStore(HOURS).clear());
   await reqAsync(tx.objectStore(META).clear());
+  await reqAsync(tx.objectStore(PERIODS).clear());
   db.close();
 }
