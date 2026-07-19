@@ -33,6 +33,7 @@ let lastMar = null; // most recent instantaneous MAR (for Calibrate capture butt
 let currentSessionId = null;
 let currentClientId = null;
 let sessionStartedAt = 0;
+let currentResolution = localStorage.getItem("bm.stats.res") || "day";
 
 const MAR_SCALE = 1.0; // meter/threshold display range (MAR is ~0..0.8+)
 const round2 = (v) => Math.round(v * 100) / 100;
@@ -390,15 +391,16 @@ async function loadStatistics() {
       data = await res.json();
       source = "central server";
     } else {
-      data = await localStore.daily(30);
+      data = await localStore.aggregate(currentResolution);
       source = "this device";
     }
     renderCharts(data.days || []);
     renderDaily(data.days || []);
     renderTotals(data.totals || {});
+    const unit = base ? "day" : currentResolution;
     status.textContent =
       data.days && data.days.length
-        ? `Showing ${data.days.length} day(s) from ${source}.`
+        ? `Showing ${data.days.length} ${unit}(s) from ${source}.`
         : `No data yet (${source}) — start monitoring to record some.`;
   } catch (err) {
     status.textContent = "Could not load statistics (" + err.message + ").";
@@ -439,7 +441,7 @@ function renderDaily(days) {
     row.className = "bar-row";
     const pct = d.open_percentage ?? 0;
     row.innerHTML = `
-      <span class="bar-label">${d.date}</span>
+      <span class="bar-label">${d.label ?? d.date}</span>
       <span class="bar-track"><span class="bar-fill" style="width:${(pct / maxPct) * 100}%"></span></span>
       <span class="bar-val">${pct.toFixed(0)}% open</span>
     `;
@@ -507,6 +509,18 @@ function boot() {
     }
   });
   $("#stats-refresh").addEventListener("click", loadStatistics);
+
+  // Graph resolution selector (hour/day/week/month).
+  const seg = $("#res-seg");
+  seg.querySelectorAll("button").forEach((b) => {
+    b.classList.toggle("active", b.dataset.res === currentResolution);
+    b.addEventListener("click", () => {
+      currentResolution = b.dataset.res;
+      localStorage.setItem("bm.stats.res", currentResolution);
+      seg.querySelectorAll("button").forEach((x) => x.classList.toggle("active", x === b));
+      loadStatistics();
+    });
+  });
 
   // Stop cleanly on unload so camera + uploads flush.
   window.addEventListener("pagehide", () => {

@@ -19,6 +19,7 @@ function niceMax(v) {
 }
 
 const shortDate = (iso) => iso.slice(5); // YYYY-MM-DD -> MM-DD
+const labelOf = (d) => d.label ?? shortDate(d.date);
 
 /**
  * @param {HTMLElement} container
@@ -64,9 +65,9 @@ export function lineChart(container, series, opts) {
   // x labels: first and last only (sparse) to avoid collisions on mobile.
   const xLabels =
     n === 1
-      ? `<text x="${x(0)}" y="${H - 8}" class="c-axis" text-anchor="middle">${shortDate(series[0].date)}</text>`
-      : `<text x="${PAD.l}" y="${H - 8}" class="c-axis" text-anchor="start">${shortDate(series[0].date)}</text>
-         <text x="${W - PAD.r}" y="${H - 8}" class="c-axis" text-anchor="end">${shortDate(series[n - 1].date)}</text>`;
+      ? `<text x="${x(0)}" y="${H - 8}" class="c-axis" text-anchor="middle">${labelOf(series[0])}</text>`
+      : `<text x="${PAD.l}" y="${H - 8}" class="c-axis" text-anchor="start">${labelOf(series[0])}</text>
+         <text x="${W - PAD.r}" y="${H - 8}" class="c-axis" text-anchor="end">${labelOf(series[n - 1])}</text>`;
 
   // Selective direct label on the last point.
   const last = series[n - 1];
@@ -111,7 +112,7 @@ function wireTooltip(container, series, { x, y, unit, fmt }) {
     cross.style.display = "";
     const rect = svg.getBoundingClientRect();
     const scale = rect.width / W;
-    tip.innerHTML = `<b>${shortDate(d.date)}</b> ${fmt(d.value)}${unit}`;
+    tip.innerHTML = `<b>${labelOf(d)}</b> ${fmt(d.value)}${unit}`;
     tip.style.display = "";
     // Position within the container (which is position:relative).
     tip.style.left = Math.min(px * scale + 8, rect.width - 90) + "px";

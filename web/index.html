@@ -246,6 +246,13 @@
            Percent-open per day, across sessions.</p>
         <p id="stats-status" class="muted">—</p>
 
+        <div class="seg" id="res-seg" aria-label="Graph resolution">
+          <button data-res="hour" type="button">Hour</button>
+          <button data-res="day" type="button">Day</button>
+          <button data-res="week" type="button">Week</button>
+          <button data-res="month" type="button">Month</button>
+        </div>
+
         <div class="stat-tiles">
           <div class="tile"><span id="agg-days">0</span><label>days</label></div>
           <div class="tile"><span id="agg-sessions">0</span><label>sessions</label></div>
@@ -259,7 +266,7 @@
         <h3>Max continuous closed duration over time</h3>
         <div id="chart-closed" class="chart"></div>
 
-        <h3>Daily % mouth-open</h3>
+        <h3>% mouth-open per period</h3>
         <div id="daily-bars" class="daily-bars"></div>
       </div>
     </section>

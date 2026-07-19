@@ -38,6 +38,29 @@ assert.ok(Math.abs(res.totals.open_percentage - 34.4) < 0.2, JSON.stringify(res.
 const narrow = await store.daily(0);
 assert.ok(narrow.days.every((d) => d.sessions !== 1), "yesterday should be excluded by days=0");
 
+// --- resolution buckets ---
+const aggDay = await store.aggregate("day");
+assert.equal(aggDay.resolution, "day");
+assert.equal(aggDay.totals.sessions, 3);
+assert.ok(aggDay.days.every((d) => typeof d.label === "string"), "each point has a label");
+
+await store.clearAll();
+
+// Hour bucketing: two sessions in the same hour, one two hours earlier.
+const base = Date.now();
+await store.recordRollup("h1", "dev", { totalOpenSeconds: 10, totalClosedSeconds: 10, maxClosedSeconds: 2 }, base);
+await store.recordRollup("h2", "dev", { totalOpenSeconds: 10, totalClosedSeconds: 10, maxClosedSeconds: 4 }, base);
+await store.recordRollup("h3", "dev", { totalOpenSeconds: 10, totalClosedSeconds: 10, maxClosedSeconds: 9 }, base - 2 * 3600_000);
+const hr = await store.aggregate("hour");
+assert.equal(hr.days.length, 2, JSON.stringify(hr.days.map((d) => d.label)));
+const busy = hr.days.find((d) => d.sessions === 2);
+assert.equal(busy.max_closed_seconds, 4, "max closed within the shared hour");
+
+// Month bucketing folds all three into one bucket.
+const mo = await store.aggregate("month");
+assert.equal(mo.days.length, 1, JSON.stringify(mo.days.map((d) => d.label)));
+assert.equal(mo.totals.sessions, 3);
+
 await store.clearAll();
 assert.equal((await store.daily(30)).days.length, 0);
 

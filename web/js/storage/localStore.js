@@ -147,6 +147,93 @@ export async function daily(days = 30) {
   };
 }
 
+// How far back each resolution looks (kept modest so charts stay readable).
+const WINDOW_MS = {
+  hour: 48 * 3600_000,
+  day: 45 * 86400_000,
+  week: 26 * 7 * 86400_000,
+  month: 13 * 31 * 86400_000,
+};
+
+/** Bucket key + display label for a timestamp at the given resolution. */
+function bucketOf(ms, res) {
+  const d = new Date(ms);
+  const y = d.getFullYear(), mo = d.getMonth() + 1, day = d.getDate(), hr = d.getHours();
+  if (res === "hour") {
+    return { key: `${y}-${pad(mo)}-${pad(day)}T${pad(hr)}`, label: `${pad(mo)}-${pad(day)} ${pad(hr)}:00` };
+  }
+  if (res === "week") {
+    const dow = (d.getDay() + 6) % 7; // Monday = 0
+    const m = new Date(d);
+    m.setDate(day - dow);
+    m.setHours(0, 0, 0, 0);
+    return {
+      key: `${m.getFullYear()}-${pad(m.getMonth() + 1)}-${pad(m.getDate())}`,
+      label: `${pad(m.getMonth() + 1)}-${pad(m.getDate())}`,
+    };
+  }
+  if (res === "month") {
+    return { key: `${y}-${pad(mo)}`, label: `${y}-${pad(mo)}` };
+  }
+  return { key: `${y}-${pad(mo)}-${pad(day)}`, label: `${pad(mo)}-${pad(day)}` };
+}
+
+/**
+ * Aggregate sessions into time buckets at the given resolution
+ * ("hour" | "day" | "week" | "month"). Same response shape as daily(), plus a
+ * `label` per point for the chart's x-axis and a `resolution` field.
+ */
+export async function aggregate(resolution = "day") {
+  const rows = await allSessions();
+  const cutoff = Date.now() - (WINDOW_MS[resolution] ?? WINDOW_MS.day);
+
+  const byKey = new Map();
+  for (const s of rows) {
+    if ((s.startedAt || 0) < cutoff) continue;
+    const { key, label } = bucketOf(s.startedAt || Date.now(), resolution);
+    const e = byKey.get(key) || { key, label, open: 0, closed: 0, sessions: 0, maxClosed: 0 };
+    e.open += s.openSeconds || 0;
+    e.closed += s.closedSeconds || 0;
+    e.maxClosed = Math.max(e.maxClosed, s.maxClosedSeconds || 0);
+    e.sessions += 1;
+    byKey.set(key, e);
+  }
+
+  const daysOut = [];
+  let totOpen = 0, totClosed = 0, totSessions = 0, overallMaxClosed = 0;
+  for (const key of [...byKey.keys()].sort()) {
+    const e = byKey.get(key);
+    const known = e.open + e.closed;
+    daysOut.push({
+      date: e.key,
+      label: e.label,
+      sessions: e.sessions,
+      open_seconds: round(e.open, 1),
+      closed_seconds: round(e.closed, 1),
+      open_percentage: known > 0 ? round((e.open / known) * 100, 1) : 0,
+      max_closed_seconds: round(e.maxClosed, 1),
+    });
+    totOpen += e.open;
+    totClosed += e.closed;
+    totSessions += e.sessions;
+    overallMaxClosed = Math.max(overallMaxClosed, e.maxClosed);
+  }
+
+  const known = totOpen + totClosed;
+  return {
+    resolution,
+    days: daysOut,
+    totals: {
+      days: daysOut.length,
+      sessions: totSessions,
+      total_open_seconds: round(totOpen, 1),
+      total_closed_seconds: round(totClosed, 1),
+      open_percentage: known > 0 ? round((totOpen / known) * 100, 1) : 0,
+      max_closed_seconds: round(overallMaxClosed, 1),
+    },
+  };
+}
+
 /** Remove everything (handy for a "clear my data" action). */
 export async function clearAll() {
   const db = await openDB();

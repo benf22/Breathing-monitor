@@ -134,6 +134,9 @@ button.ghost { background: transparent; color: var(--muted); border: 1px solid v
 .form-actions { display: flex; gap: 10px; }
 
 .stats-head { display: flex; align-items: center; justify-content: space-between; }
+.seg { display: inline-flex; gap: 4px; background: var(--panel-2); padding: 4px; border-radius: 10px; margin: 4px 0 14px; }
+.seg button { background: transparent; color: var(--muted); border: 0; padding: 6px 14px; border-radius: 8px; cursor: pointer; font-size: 13px; }
+.seg button.active { background: var(--accent); color: #fff; }
 .chart { width: 100%; overflow-x: auto; margin: 8px 0 20px; }
 .chart svg { width: 100%; height: auto; display: block; }
 .chart .empty { color: var(--muted); font-size: 13px; padding: 20px 4px; }
