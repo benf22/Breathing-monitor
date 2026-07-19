@@ -56,6 +56,8 @@ let wasTalking = false;
 let bioOn = true; // is feedback (alerts + Live color) active right now
 let bioTimer = null;
 let wakeLock = null; // Screen Wake Lock sentinel (keeps the display on)
+let shouldResume = false; // was monitoring intended to be active (auto-resume)?
+let starting = false; // guard against overlapping starts
 
 async function requestWakeLock() {
   try {
@@ -399,7 +401,9 @@ function toast(msg, level = "info") {
 
 // ---- monitor -------------------------------------------------------------
 async function startMonitoring() {
-  if (pipeline) return;
+  if (pipeline || starting) return;
+  starting = true;
+  shouldResume = true; // remember intent so we auto-resume after backgrounding
   const btn = $("#toggle-btn");
   btn.disabled = true;
   btn.textContent = "Starting…";
@@ -481,6 +485,8 @@ async function startMonitoring() {
     btn.textContent = "Start monitoring";
     btn.disabled = false;
     stopMonitoring();
+  } finally {
+    starting = false;
   }
 }
 
@@ -614,6 +620,7 @@ function populateConfigForm() {
   set("intervalMs", settings.capture.intervalMs);
   set("facingMode", settings.capture.facingMode);
   set("rotation", settings.capture.rotation);
+  set("autoStartStop", settings.capture.autoStartStop);
   set("openThreshold", settings.detection.openThreshold);
   set("closeThreshold", settings.detection.closeThreshold);
   set("minOpenSeconds", settings.detection.minOpenSeconds);
@@ -645,6 +652,7 @@ function bindConfigForm() {
         intervalMs: parseInt(f.intervalMs.value, 10),
         facingMode: f.facingMode.value,
         rotation: f.rotation.value,
+        autoStartStop: f.autoStartStop.checked,
       },
       detection: {
         ...settings.detection,
@@ -982,6 +990,7 @@ function boot() {
 
   $("#toggle-btn").addEventListener("click", () => {
     if (pipeline) {
+      shouldResume = false; // manual stop — don't auto-resume
       stopMonitoring();
       toast("Monitoring stopped", "info");
     } else {
@@ -1020,12 +1029,18 @@ function boot() {
     if (uploader) uploader.flush(true);
   });
 
-  // Stop monitoring when the app goes to the background (screen off / app
-  // switch); the browser suspends the camera there anyway.
+  // Auto start/stop with app focus: stop when backgrounded (the browser
+  // suspends the camera anyway), resume when it returns to the foreground —
+  // unless the user stopped it manually.
   document.addEventListener("visibilitychange", () => {
-    if (document.hidden && pipeline) {
-      stopMonitoring();
-      toast("Monitoring stopped — app went to the background.", "warn");
+    if (!settings.capture.autoStartStop) return;
+    if (document.hidden) {
+      if (pipeline) {
+        stopMonitoring(); // keeps shouldResume=true so we come back
+        toast("Paused — app went to the background.", "warn");
+      }
+    } else if (shouldResume && !pipeline && !starting) {
+      startMonitoring();
     }
   });
 

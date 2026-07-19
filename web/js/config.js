@@ -15,6 +15,8 @@ export const DEFAULT_SETTINGS = Object.freeze({
     // "auto" rotates the frame upright only when it arrives sideways; or force
     // "0" | "90" | "180" | "270".
     rotation: "auto",
+    // Stop monitoring when the app is backgrounded and resume when it returns.
+    autoStartStop: true,
   },
   detection: {
     minFaceConfidence: 0.5,
