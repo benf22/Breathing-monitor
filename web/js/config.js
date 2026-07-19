@@ -25,6 +25,8 @@ export const DEFAULT_SETTINGS = Object.freeze({
     // Vision-only talking detection; ignores frames while you're speaking.
     enabled: true,
     sensitivity: 0.5, // 0..1, higher flags talking more readily
+    onsetMs: 200, // t1: raw-talking must persist this long to ENTER talking
+    holdMs: 700, // t2: no talking evidence for this long to EXIT talking
   },
   notifications: {
     enabled: true,

@@ -9,7 +9,7 @@ import { Notifier } from "./notifications.js";
 import { PreviewRenderer } from "./ui/overlay.js";
 import { initTabs } from "./ui/tabs.js";
 import { lineChart, stateRibbon, bioChart, LiveTrace } from "./ui/charts.js";
-import { isIgnored, ignoreLabels } from "./core/ignore.js";
+import { isIgnored, ignoreLabels, ignoreReasons } from "./core/ignore.js";
 import { APP_VERSION } from "./version.js";
 import {
   loadSettings,
@@ -111,12 +111,18 @@ function renderLiveViews() {
 
 // Distraction-free ambient tab: green = closed, red = open, gray = ignored/not
 // detected.
-function updateAmbient(result, ignored) {
+function updateAmbient(result, ignored, talkingIgnored) {
   const amb = $("#ambient");
   if (!amb) return;
   const st = !result || ignored ? "unknown" : result.state === "open" ? "open" : result.state === "closed" ? "closed" : "unknown";
-  amb.dataset.state = st;
-  $("#ambient-state").textContent = st === "open" ? "OPEN" : st === "closed" ? "CLOSED" : "NOT DETECTED";
+  amb.dataset.state = st; // ignored → gray (talking is treated as an ignore)
+  $("#ambient-state").textContent = talkingIgnored
+    ? "TALKING"
+    : st === "open"
+    ? "OPEN"
+    : st === "closed"
+    ? "CLOSED"
+    : "NOT DETECTED";
 }
 
 function bumpMax(hk, val) {
@@ -332,13 +338,14 @@ function onFrame(result) {
   // Central suppression gate: ignored frames are never aggregated and never
   // alert (see core/ignore.js).
   const ignored = isIgnored(result);
+  const talkingIgnored = ignored && ignoreReasons(result).includes("talking");
   ignoredNow = ignored;
 
   // Accumulate fine-grained (per-hour) activity for the stats store.
   accountFrame(result, ignored);
   // Live binary state trace + ambient tab (ignored → gap / gray).
   liveTrace.push(Date.now(), ignored ? "unknown" : result.state);
-  updateAmbient(result, ignored);
+  updateAmbient(result, ignored, talkingIgnored);
   updateAvgClose(); // live: grows while the mouth is currently closed (gated)
 
   const indicator = $("#indicator");
@@ -346,9 +353,16 @@ function onFrame(result) {
   const state = result.state;
   const displayState = ignored ? "unknown" : state;
 
+  // Treat talking as an ignore, but label it "TALKING" instead of the neutral
+  // placeholder so it's clear why nothing is being counted.
   indicator.dataset.state = displayState;
-  $("#indicator-label").textContent =
-    displayState === "open" ? "OPEN" : displayState === "closed" ? "CLOSED" : "…";
+  $("#indicator-label").textContent = talkingIgnored
+    ? "TALKING"
+    : displayState === "open"
+    ? "OPEN"
+    : displayState === "closed"
+    ? "CLOSED"
+    : "…";
   $("#mar-value").textContent = mar;
   $("#face-status").textContent = ignored
     ? "ignored · " + (ignoreLabels(result)[0] || "")
@@ -511,6 +525,8 @@ function refreshCalibrateUI() {
   $("#talk-enabled").checked = t.enabled;
   $("#talk-sens").value = t.sensitivity;
   $("#talk-sens-val").textContent = t.sensitivity.toFixed(2);
+  $("#talk-onset").value = (t.onsetMs / 1000).toFixed(2);
+  $("#talk-hold").value = (t.holdMs / 1000).toFixed(2);
 }
 
 function applyThresholds(open, close) {
@@ -552,6 +568,14 @@ function initCalibrate() {
   $("#talk-sens").addEventListener("input", (e) => {
     settings.talking.sensitivity = parseFloat(e.target.value);
     $("#talk-sens-val").textContent = settings.talking.sensitivity.toFixed(2);
+    applyTalking();
+  });
+  $("#talk-onset").addEventListener("change", (e) => {
+    settings.talking.onsetMs = Math.max(0, parseFloat(e.target.value) || 0) * 1000;
+    applyTalking();
+  });
+  $("#talk-hold").addEventListener("change", (e) => {
+    settings.talking.holdMs = Math.max(0, parseFloat(e.target.value) || 0) * 1000;
     applyTalking();
   });
 

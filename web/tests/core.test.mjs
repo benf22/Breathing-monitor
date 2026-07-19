@@ -158,6 +158,19 @@ for (let t = 0; t <= 2000; t += 50) {
 }
 assert.equal(yawn, false, "a single slow open must not be talking");
 
+// Time hysteresis: t1 (onset) to enter, t2 (hold) to leave.
+const osc = (t) => 0.3 + 0.2 * Math.sin((2 * Math.PI * 4 * t) / 1000);
+const th = new TalkingDetector({ sensitivity: 0.5, windowMs: 400, onsetMs: 300, holdMs: 500 });
+let a = false;
+for (let t = 0; t <= 200; t += 40) a = th.update(t, osc(t)); // 200ms < t1
+assert.equal(a, false, "must not enter talking before t1");
+for (let t = 240; t <= 800; t += 40) a = th.update(t, osc(t)); // sustained past t1
+assert.equal(a, true, "enters talking once sustained past t1");
+for (let t = 840; t <= 1000; t += 40) a = th.update(t, 0.3); // brief quiet < t2
+assert.equal(a, true, "stays talking within the t2 hold");
+for (let t = 1040; t <= 2400; t += 40) a = th.update(t, 0.3); // prolonged quiet > t2
+assert.equal(a, false, "leaves talking after t2 of quiet");
+
 // Disabled → never talking.
 const off = new TalkingDetector({ enabled: false });
 for (let t = 0; t <= 2000; t += 40) off.update(t, 0.3 + 0.2 * Math.sin(t / 40));
