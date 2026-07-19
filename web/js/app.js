@@ -113,20 +113,49 @@ function renderLiveViews() {
   renderBio();
 }
 
-// Distraction-free ambient tab: green = closed, red = open, gray = ignored/not
-// detected.
+// Distraction-free ambient tab. The TEXT tracks the state immediately, but the
+// COLOR is debounced: a new state must hold for AMBIENT_COLOR_DELAY_MS before the
+// background switches — during the wait the previous color stays while the text
+// already shows the new state. Kills color flicker on brief blips.
+const AMBIENT_COLOR_DELAY_MS = 1000; // t
+let ambColorState = "unknown"; // committed (shown) color
+let ambPendingState = null;
+let ambPendingSince = 0;
+
+function resetAmbientColor() {
+  ambColorState = "unknown";
+  ambPendingState = null;
+}
+
 function updateAmbient(result, ignored, talkingIgnored) {
   const amb = $("#ambient");
   if (!amb) return;
-  const st = !result || ignored ? "unknown" : result.state === "open" ? "open" : result.state === "closed" ? "closed" : "unknown";
-  amb.dataset.state = st; // ignored → gray (talking is treated as an ignore)
+  const target = !result || ignored ? "unknown" : result.state === "open" ? "open" : result.state === "closed" ? "closed" : "unknown";
+  const now = Date.now();
+
+  // Text is immediate (talking is treated as an ignore, but labeled).
   $("#ambient-state").textContent = talkingIgnored
     ? "TALKING"
-    : st === "open"
+    : target === "open"
     ? "OPEN"
-    : st === "closed"
+    : target === "closed"
     ? "CLOSED"
     : "NOT DETECTED";
+
+  // Color lags: commit only once `target` has persisted for the delay.
+  if (target === ambColorState) {
+    ambPendingState = null;
+  } else {
+    if (ambPendingState !== target) {
+      ambPendingState = target;
+      ambPendingSince = now;
+    }
+    if (now - ambPendingSince >= AMBIENT_COLOR_DELAY_MS) {
+      ambColorState = target;
+      ambPendingState = null;
+    }
+  }
+  amb.dataset.state = ambColorState;
 }
 
 function bumpMax(hk, val) {
@@ -294,6 +323,7 @@ async function startMonitoring() {
     currentSessionId = newSessionId();
     currentClientId = getClientId();
     resetAccounting();
+    resetAmbientColor();
     liveTrace.reset();
     avgTrace = [];
     lastAvgPushSec = 0;
@@ -367,6 +397,7 @@ function stopMonitoring() {
   $("#cal-fill").style.width = "0%";
   resetNarMeter();
   renderLiveViews();
+  resetAmbientColor();
   updateAmbient(null);
   $("#ambient-hint").textContent = "Start monitoring on the Monitor tab, then leave this tab open.";
 }
