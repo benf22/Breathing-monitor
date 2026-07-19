@@ -2,7 +2,7 @@
 // offline. The MediaPipe WASM/model and API calls are network-first (with a
 // runtime cache) since they're large / dynamic.
 
-const SHELL_CACHE = "bm-shell-v10";
+const SHELL_CACHE = "bm-shell-v11";
 const RUNTIME_CACHE = "bm-runtime-v1";
 
 const SHELL = [
@@ -21,6 +21,7 @@ const SHELL = [
   "./js/core/smoothing.js",
   "./js/core/stats.js",
   "./js/core/nostrils.js",
+  "./js/core/ignore.js",
   "./js/capture/camera.js",
   "./js/vision/faceLandmarker.js",
   "./js/vision/faceSensor.js",

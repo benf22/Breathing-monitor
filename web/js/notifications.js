@@ -86,4 +86,13 @@ export class Notifier {
     this._openAlertFired = false;
     this._lastReminder = Date.now();
   }
+
+  /**
+   * Called on ignored frames: fire nothing, and re-arm the sustained-open alert
+   * so a run interrupted by an ignored gap can alert again once it resumes. Does
+   * not touch the periodic-reminder timer.
+   */
+  suppress() {
+    this._openAlertFired = false;
+  }
 }

@@ -121,4 +121,16 @@ assert.equal(pl.smoother.config.closeThreshold, 0.4);
 pl.updateDetection({ openThreshold: 0.3 });
 assert.equal(pl.smoother.config.closeThreshold, 0.3, "close clamped to open");
 
+// --- ignore / suppression rules ---
+const { isIgnored, ignoreReasons } = await import("../js/core/ignore.js");
+assert.equal(isIgnored(null), true);
+assert.equal(isIgnored({ face: null, lips: null }), true);
+assert.deepEqual(ignoreReasons({ face: null, lips: null }).sort(), ["no-face", "no-mar"]);
+// face but no MAR -> ignored via no-mar only
+assert.equal(isIgnored({ face: {}, lips: null }), true);
+assert.deepEqual(ignoreReasons({ face: {}, lips: null }), ["no-mar"]);
+// usable frame -> not ignored
+assert.equal(isIgnored({ face: {}, lips: { mar: 0.3 } }), false);
+assert.deepEqual(ignoreReasons({ face: {}, lips: { mar: 0.3 } }), []);
+
 console.log("ALL JS CORE TESTS PASSED");

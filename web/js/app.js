@@ -9,6 +9,7 @@ import { Notifier } from "./notifications.js";
 import { PreviewRenderer } from "./ui/overlay.js";
 import { initTabs } from "./ui/tabs.js";
 import { lineChart, stateRibbon, bioChart, LiveTrace } from "./ui/charts.js";
+import { isIgnored, ignoreLabels } from "./core/ignore.js";
 import { APP_VERSION } from "./version.js";
 import {
   loadSettings,
@@ -39,9 +40,13 @@ let currentResolution = localStorage.getItem("bm.stats.res") || "day";
 // selector only rolls these up for display.
 let accByHour = new Map(); // hourKey -> { open, closed } seconds since last flush
 let maxByHour = new Map(); // hourKey -> longest continuous closed span (session)
-let closedRun = 0; // current ongoing closed-span length (s)
+let closedRun = 0; // current ongoing closed-span length (s), excludes ignored time
+let openRun = 0; // current ongoing open-span length (s), excludes ignored time
+let sessionOpen = 0; // session open seconds (ignore-gated) for the Monitor tiles
+let sessionClosed = 0; // session closed seconds (ignore-gated)
 let lastAccMs = null;
 let prevAccState = null;
+let ignoredNow = false; // whether the latest frame is being ignored
 
 // Live real-time MAR trace for the Monitor tab (online feedback).
 const liveTrace = new LiveTrace();
@@ -70,11 +75,8 @@ function currentAvgCloseSeconds() {
   closedSpans = closedSpans.filter((s) => s.t >= cutoff);
   let sum = 0, count = 0;
   for (const s of closedSpans) { sum += s.dur; count += 1; }
-  // Fold in the ongoing closed span, growing in real time.
-  if (pipeline && pipeline.smoother.state === "closed" && pipeline.lastResult) {
-    const ongoing = pipeline.smoother.timeInState(pipeline.lastResult.timestamp);
-    if (ongoing > 0) { sum += ongoing; count += 1; }
-  }
+  // Fold in the ongoing closed span (excludes ignored time via closedRun).
+  if (!ignoredNow && closedRun > 0) { sum += closedRun; count += 1; }
   return count ? sum / count : null;
 }
 
@@ -107,11 +109,12 @@ function renderLiveViews() {
   renderBio();
 }
 
-// Distraction-free ambient tab: green = closed, red = open, gray = not detected.
-function updateAmbient(result) {
+// Distraction-free ambient tab: green = closed, red = open, gray = ignored/not
+// detected.
+function updateAmbient(result, ignored) {
   const amb = $("#ambient");
   if (!amb) return;
-  const st = !result || !result.face ? "unknown" : result.state === "open" ? "open" : result.state === "closed" ? "closed" : "unknown";
+  const st = !result || ignored ? "unknown" : result.state === "open" ? "open" : result.state === "closed" ? "closed" : "unknown";
   amb.dataset.state = st;
   $("#ambient-state").textContent = st === "open" ? "OPEN" : st === "closed" ? "CLOSED" : "NOT DETECTED";
 }
@@ -121,13 +124,14 @@ function bumpMax(hk, val) {
 }
 
 // Attribute the time since the previous frame to the current wall-clock hour and
-// the smoothed state. Only counts frames with a detected face.
-function accountFrame(result) {
+// the smoothed state. IGNORED frames (see core/ignore.js) are never aggregated:
+// they pause accounting and close out any ongoing run, exactly like a face loss.
+function accountFrame(result, ignored) {
   const now = Date.now();
-  if (!result.face) {
-    // Face lost: close out any ongoing closed run and pause accounting.
+  if (ignored) {
     if (closedRun > 0) bumpMax(localStore.hourKey(now), closedRun);
     closedRun = 0;
+    openRun = 0;
     prevAccState = null;
     lastAccMs = null;
     return;
@@ -138,20 +142,27 @@ function accountFrame(result) {
     if (dt > 0 && dt < 5) {
       const hk = localStore.hourKey(now);
       const e = accByHour.get(hk) || { open: 0, closed: 0 };
-      if (st === "open") e.open += dt;
-      else if (st === "closed") {
+      if (st === "open") {
+        e.open += dt;
+        openRun += dt;
+        sessionOpen += dt;
+      } else if (st === "closed") {
         e.closed += dt;
         closedRun += dt;
+        sessionClosed += dt;
       }
       accByHour.set(hk, e);
     }
   }
-  // A closed span just ended → record its length in the hour it ended.
+  // A closed span just ended by opening → record it (max + avg-close metric).
+  // The duration is the ignore-gated run, so ignored gaps never inflate it.
   if (prevAccState === "closed" && st !== "closed") {
     bumpMax(localStore.hourKey(now), closedRun);
+    if (closedRun > 0) closedSpans.push({ t: now, dur: closedRun });
     closedRun = 0;
   }
   if (st !== "closed") closedRun = 0;
+  if (st !== "open") openRun = 0;
   prevAccState = st;
   lastAccMs = now;
 }
@@ -160,6 +171,9 @@ function resetAccounting() {
   accByHour = new Map();
   maxByHour = new Map();
   closedRun = 0;
+  openRun = 0;
+  sessionOpen = 0;
+  sessionClosed = 0;
   lastAccMs = null;
   prevAccState = null;
 }
@@ -311,46 +325,52 @@ function onFrame(result) {
   // Draw the face box + lip/nose landmarks over the preview video.
   if (preview) preview.setResult(result);
 
+  // Central suppression gate: ignored frames are never aggregated and never
+  // alert (see core/ignore.js).
+  const ignored = isIgnored(result);
+  ignoredNow = ignored;
+
   // Accumulate fine-grained (per-hour) activity for the stats store.
-  accountFrame(result);
-  // Feed the live binary state trace + ambient tab (no usable face → gap/gray).
-  const liveState = result.face ? result.state : "unknown";
-  liveTrace.push(Date.now(), liveState);
-  updateAmbient(result);
-  updateAvgClose(); // live: grows while the mouth is currently closed
+  accountFrame(result, ignored);
+  // Live binary state trace + ambient tab (ignored → gap / gray).
+  liveTrace.push(Date.now(), ignored ? "unknown" : result.state);
+  updateAmbient(result, ignored);
+  updateAvgClose(); // live: grows while the mouth is currently closed (gated)
 
   const indicator = $("#indicator");
   const mar = result.lips ? result.lips.mar.toFixed(3) : "—";
   const state = result.state;
+  const displayState = ignored ? "unknown" : state;
 
-  indicator.dataset.state = state;
+  indicator.dataset.state = displayState;
   $("#indicator-label").textContent =
-    state === "open" ? "OPEN" : state === "closed" ? "CLOSED" : "…";
+    displayState === "open" ? "OPEN" : displayState === "closed" ? "CLOSED" : "…";
   $("#mar-value").textContent = mar;
-  $("#face-status").textContent = result.face ? "face detected" : "no face";
+  $("#face-status").textContent = ignored
+    ? "ignored · " + (ignoreLabels(result)[0] || "")
+    : "tracking";
 
   // Feed the Calibrate tab's live readout (cheap even when that tab is hidden).
   lastMar = result.lips ? result.lips.mar : null;
   $("#cal-mar").textContent = lastMar != null ? lastMar.toFixed(3) : "—";
-  $("#cal-state").textContent = state;
+  $("#cal-state").textContent = displayState;
   $("#cal-fill").style.width = (lastMar != null ? marPct(lastMar) : 0) + "%";
 
   // Experimental nose-breathing signal (auto-scaled bar).
   updateNarMeter(result.nose ? result.nose.nar : null);
 
-  if (notifier && pipeline) {
-    const tis = pipeline.smoother.timeInState(result.timestamp);
-    notifier.onState(state, tis);
+  // Alerts: suppressed while ignored; the open-alert uses the ignore-gated
+  // continuous open-run duration (so a gap doesn't inflate it).
+  if (notifier) {
+    if (ignored) notifier.suppress();
+    else notifier.onState(state, openRun);
   }
 }
 
 function onChange(change) {
   if (uploader) uploader.enqueueChange(change);
-  // Feed the moving-average of closed-span durations.
-  if (change.fromState === "closed" && change.prevDuration > 0) {
-    closedSpans.push({ t: Date.now(), dur: change.prevDuration });
-    updateAvgClose();
-  }
+  // Closed-span durations for the avg-close metric are recorded in accountFrame
+  // (ignore-gated), not here — this listener only drives the uploader + the list.
   const list = $("#changes-list");
   const li = document.createElement("li");
   const t = new Date().toLocaleTimeString();
@@ -362,10 +382,13 @@ function onChange(change) {
 function refreshStats() {
   if (!pipeline) return;
   const s = pipeline.snapshot();
-  $("#stat-open-pct").textContent = s.openPercentage + "%";
+  // Open/closed time and % from the ignore-gated session accounting; change
+  // count and face rate from the pipeline accumulator.
+  const known = sessionOpen + sessionClosed;
+  $("#stat-open-pct").textContent = (known > 0 ? Math.round((sessionOpen / known) * 100) : 0) + "%";
   $("#stat-changes").textContent = s.totalChanges;
-  $("#stat-open-s").textContent = s.totalOpenSeconds.toFixed(0) + "s";
-  $("#stat-closed-s").textContent = s.totalClosedSeconds.toFixed(0) + "s";
+  $("#stat-open-s").textContent = sessionOpen.toFixed(0) + "s";
+  $("#stat-closed-s").textContent = sessionClosed.toFixed(0) + "s";
   $("#stat-face-rate").textContent = Math.round(s.faceDetectionRate * 100) + "%";
   updateAvgClose(); // recompute so the 60-min window decays even without new spans
 }
