@@ -110,6 +110,12 @@ button.ghost { background: transparent; color: var(--muted); border: 1px solid v
 .tile span { display: block; font-size: 20px; font-weight: 700; }
 .tile label { color: var(--muted); font-size: 12px; }
 
+.live-card { background: var(--panel); border: 1px solid var(--border); border-radius: var(--radius); padding: 14px; margin-top: 16px; }
+.live-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; margin-bottom: 6px; }
+.live-head h3 { margin: 0; }
+.chart .c-thr-open { stroke: var(--open); stroke-width: 1; stroke-dasharray: 4 3; opacity: 0.7; }
+.chart .c-thr-close { stroke: var(--closed); stroke-width: 1; stroke-dasharray: 4 3; opacity: 0.7; }
+.chart .c-thr-lbl { fill: var(--muted); font-size: 9px; }
 .changes-card { margin-top: 16px; }
 .changes-card h3 { margin: 0 0 8px; }
 .changes-list { list-style: none; margin: 0; padding: 0; max-height: 240px; overflow: auto; font-family: ui-monospace, monospace; font-size: 13px; }

@@ -8,7 +8,7 @@ import * as localStore from "./storage/localStore.js";
 import { Notifier } from "./notifications.js";
 import { PreviewRenderer } from "./ui/overlay.js";
 import { initTabs } from "./ui/tabs.js";
-import { lineChart } from "./ui/charts.js";
+import { lineChart, liveChart, LiveTrace } from "./ui/charts.js";
 import { APP_VERSION } from "./version.js";
 import {
   loadSettings,
@@ -42,6 +42,23 @@ let maxByHour = new Map(); // hourKey -> longest continuous closed span (session
 let closedRun = 0; // current ongoing closed-span length (s)
 let lastAccMs = null;
 let prevAccState = null;
+
+// Live real-time MAR trace for the Monitor tab (online feedback).
+const liveTrace = new LiveTrace();
+let liveTimer = null;
+let liveRes = localStorage.getItem("bm.live.res") || "sec";
+
+function renderLive() {
+  const series = liveRes === "sec" ? liveTrace.seconds(90) : liveTrace.minutes(60);
+  const winEl = $("#live-window");
+  if (winEl) winEl.textContent = liveRes === "sec" ? "90s" : "60 min";
+  liveChart($("#live-chart"), series, {
+    openThreshold: settings.detection.openThreshold,
+    closeThreshold: settings.detection.closeThreshold,
+    res: liveRes,
+    emptyMsg: pipeline ? "Waiting for a face…" : "Start monitoring to see live feedback.",
+  });
+}
 
 function bumpMax(hk, val) {
   if (val > 0) maxByHour.set(hk, Math.max(maxByHour.get(hk) || 0, val));
@@ -157,6 +174,7 @@ async function startMonitoring() {
     currentSessionId = newSessionId();
     currentClientId = getClientId();
     resetAccounting();
+    liveTrace.reset();
     localStore.startSession().catch((e) => console.warn("local store:", e));
     // Cloud upload only when an API base is configured; otherwise metadata lives
     // on-device in IndexedDB — no backend needed.
@@ -185,6 +203,7 @@ async function startMonitoring() {
       if (uploader) uploader.enqueueRollup(pipeline.snapshot());
     }, (settings.cloud.rollupSeconds || 30) * 1000);
     statusTimer = setInterval(refreshStats, 1000);
+    liveTimer = setInterval(renderLive, 500);
 
     btn.textContent = "Stop monitoring";
     btn.classList.add("stop");
@@ -206,6 +225,7 @@ function stopMonitoring() {
   flushAccounting();
   if (rollupTimer) clearInterval(rollupTimer), (rollupTimer = null);
   if (statusTimer) clearInterval(statusTimer), (statusTimer = null);
+  if (liveTimer) clearInterval(liveTimer), (liveTimer = null);
   if (uploader) uploader.stop(), (uploader = null);
   if (pipeline) pipeline.stop(), (pipeline = null);
   if (preview) preview.stop(), (preview = null);
@@ -223,6 +243,7 @@ function stopMonitoring() {
   $("#cal-state").textContent = "—";
   $("#cal-fill").style.width = "0%";
   resetNarMeter();
+  renderLive();
 }
 
 function onFrame(result) {
@@ -231,6 +252,8 @@ function onFrame(result) {
 
   // Accumulate fine-grained (per-hour) activity for the stats store.
   accountFrame(result);
+  // Feed the live real-time trace.
+  liveTrace.push(Date.now(), result.lips ? result.lips.mar : null);
 
   const indicator = $("#indicator");
   const mar = result.lips ? result.lips.mar.toFixed(3) : "—";
@@ -580,6 +603,19 @@ function boot() {
     }
   });
   $("#stats-refresh").addEventListener("click", loadStatistics);
+
+  // Live feedback resolution toggle (Seconds/Minutes).
+  const liveSeg = $("#live-seg");
+  liveSeg.querySelectorAll("button").forEach((b) => {
+    b.classList.toggle("active", b.dataset.live === liveRes);
+    b.addEventListener("click", () => {
+      liveRes = b.dataset.live;
+      localStorage.setItem("bm.live.res", liveRes);
+      liveSeg.querySelectorAll("button").forEach((x) => x.classList.toggle("active", x === b));
+      renderLive();
+    });
+  });
+  renderLive();
 
   // Graph resolution selector (hour/day/week/month).
   const seg = $("#res-seg");

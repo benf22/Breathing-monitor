@@ -59,6 +59,17 @@
         </div>
       </div>
 
+      <div class="live-card">
+        <div class="live-head">
+          <h3>Live feedback <span class="muted small">· last <span id="live-window">90s</span></span></h3>
+          <div class="seg" id="live-seg" aria-label="Live resolution">
+            <button data-live="sec" type="button" class="active">Seconds</button>
+            <button data-live="min" type="button">Minutes</button>
+          </div>
+        </div>
+        <div id="live-chart" class="chart"></div>
+      </div>
+
       <div class="changes-card">
         <h3>Recent changes</h3>
         <ul id="changes-list" class="changes-list"></ul>
