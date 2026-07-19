@@ -106,8 +106,10 @@ export async function addHourly(key, openInc, closedInc, maxClosed) {
   const db = await openDB();
   const store = db.transaction(HOURS, "readwrite").objectStore(HOURS);
   const cur = (await reqAsync(store.get(key))) || { key, open: 0, closed: 0, maxClosed: 0 };
-  cur.open += openInc || 0;
-  cur.closed += closedInc || 0;
+  // Increments may be negative (retroactive correction, e.g. talking onset);
+  // clamp so a bucket never goes below zero.
+  cur.open = Math.max(0, cur.open + (openInc || 0));
+  cur.closed = Math.max(0, cur.closed + (closedInc || 0));
   cur.maxClosed = Math.max(cur.maxClosed, maxClosed || 0);
   await reqAsync(store.put(cur));
   db.close();

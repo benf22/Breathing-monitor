@@ -47,6 +47,10 @@ let sessionClosed = 0; // session closed seconds (ignore-gated)
 let lastAccMs = null;
 let prevAccState = null;
 let ignoredNow = false; // whether the latest frame is being ignored
+// Recent open-time contributions [{ t, dt }] so a just-counted OPEN can be
+// retroactively removed when it turns out to be the onset of talking.
+let recentOpen = [];
+let wasTalking = false;
 
 // Live real-time MAR trace for the Monitor tab (online feedback).
 const liveTrace = new LiveTrace();
@@ -152,6 +156,9 @@ function accountFrame(result, ignored) {
         e.open += dt;
         openRun += dt;
         sessionOpen += dt;
+        recentOpen.push({ t: now, dt });
+        const keepFrom = now - 5000;
+        while (recentOpen.length && recentOpen[0].t < keepFrom) recentOpen.shift();
       } else if (st === "closed") {
         e.closed += dt;
         closedRun += dt;
@@ -182,6 +189,38 @@ function resetAccounting() {
   sessionClosed = 0;
   lastAccMs = null;
   prevAccState = null;
+  recentOpen = [];
+  wasTalking = false;
+}
+
+// When talking is first confirmed, the OPEN time counted during the detection
+// lag was actually the onset of talking — remove it from the aggregation.
+function rollbackTalkingOnset() {
+  const now = Date.now();
+  const lag = (settings.talking.onsetMs || 200) + 1500 /* detector window */ + 300;
+  const from = now - lag;
+  let subtract = 0;
+  const keep = [];
+  for (const o of recentOpen) {
+    if (o.t >= from) subtract += o.dt;
+    else keep.push(o);
+  }
+  recentOpen = keep;
+  if (subtract <= 0.01) return;
+
+  const hk = localStore.hourKey(now);
+  const e = accByHour.get(hk);
+  let remaining = subtract;
+  if (e) {
+    const take = Math.min(e.open, remaining);
+    e.open -= take;
+    remaining -= take;
+  }
+  sessionOpen = Math.max(0, sessionOpen - subtract);
+  // Anything already flushed to the store gets a negative correction.
+  if (remaining > 0.01) {
+    localStore.addHourly(hk, -remaining, 0, 0).catch(() => {});
+  }
 }
 
 async function flushAccounting() {
@@ -341,6 +380,11 @@ function onFrame(result) {
   const ignored = isIgnored(result);
   const talkingIgnored = ignored && ignoreReasons(result).includes("talking");
   ignoredNow = ignored;
+
+  // Talking just started → the OPEN counted during the detection lag was really
+  // the beginning of talking; undo it.
+  if (result.talking && !wasTalking) rollbackTalkingOnset();
+  wasTalking = result.talking === true;
 
   // Accumulate fine-grained (per-hour) activity for the stats store.
   accountFrame(result, ignored);

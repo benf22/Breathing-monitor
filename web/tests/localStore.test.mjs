@@ -45,6 +45,16 @@ assert.ok(mo.days.length <= day.days.length);
 assert.equal(mo.totals.sessions, 3);
 
 await store.clearAll();
+
+// Retroactive correction: a negative open increment (talking-onset rollback)
+// clamps the bucket at zero rather than going negative.
+const nowKey = store.hourKey(Date.now());
+await store.addHourly(nowKey, 30, 0, 0);
+await store.addHourly(nowKey, -50, 0, 0);
+const adj = await store.aggregate("hour");
+assert.equal(adj.days[0].open_seconds, 0, "open clamped at 0 after over-subtraction");
+
+await store.clearAll();
 const empty = await store.aggregate("day");
 assert.equal(empty.days.length, 0);
 assert.equal(empty.totals.sessions, 0);
