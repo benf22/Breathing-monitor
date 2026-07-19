@@ -20,6 +20,7 @@
     </div>
     <nav class="tabs">
       <button data-tab-btn="monitor" class="active">Monitor</button>
+      <button data-tab-btn="live">Live</button>
       <button data-tab-btn="calibrate">Calibrate</button>
       <button data-tab-btn="definitions">Definitions</button>
       <button data-tab-btn="config">Config</button>
@@ -54,6 +55,7 @@
             <div class="tile"><span id="stat-changes">0</span><label>changes</label></div>
             <div class="tile"><span id="stat-open-s">0s</span><label>open time</label></div>
             <div class="tile"><span id="stat-closed-s">0s</span><label>closed time</label></div>
+            <div class="tile"><span id="stat-avg-close">—</span><label>avg close · 60m</label></div>
             <div class="tile"><span id="stat-face-rate">0%</span><label>face rate</label></div>
           </div>
         </div>
@@ -61,7 +63,7 @@
 
       <div class="live-card">
         <div class="live-head">
-          <h3>Live feedback <span class="muted small">· last <span id="live-window">90s</span></span></h3>
+          <h3>Open / closed timeline <span class="muted small">· last <span id="live-window">90s</span></span></h3>
           <div class="seg" id="live-seg" aria-label="Live resolution">
             <button data-live="sec" type="button" class="active">Seconds</button>
             <button data-live="min" type="button">Minutes</button>
@@ -73,6 +75,18 @@
       <div class="changes-card">
         <h3>Recent changes</h3>
         <ul id="changes-list" class="changes-list"></ul>
+      </div>
+    </section>
+
+    <!-- LIVE (ambient, distraction-free) -->
+    <section data-tab="live" class="panel live-ambient-panel" hidden>
+      <div id="ambient" class="ambient" data-state="unknown">
+        <div class="ambient-state" id="ambient-state">—</div>
+        <div class="ambient-metric">
+          <span id="ambient-metric">—</span>
+          <label>avg closed span · last 60 min</label>
+        </div>
+        <div class="ambient-hint" id="ambient-hint">Start monitoring on the Monitor tab, then leave this tab open.</div>
       </div>
     </section>
 

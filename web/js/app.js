@@ -8,7 +8,7 @@ import * as localStore from "./storage/localStore.js";
 import { Notifier } from "./notifications.js";
 import { PreviewRenderer } from "./ui/overlay.js";
 import { initTabs } from "./ui/tabs.js";
-import { lineChart, liveChart, LiveTrace } from "./ui/charts.js";
+import { lineChart, stateRibbon, LiveTrace } from "./ui/charts.js";
 import { APP_VERSION } from "./version.js";
 import {
   loadSettings,
@@ -52,12 +52,34 @@ function renderLive() {
   const series = liveRes === "sec" ? liveTrace.seconds(90) : liveTrace.minutes(60);
   const winEl = $("#live-window");
   if (winEl) winEl.textContent = liveRes === "sec" ? "90s" : "60 min";
-  liveChart($("#live-chart"), series, {
-    openThreshold: settings.detection.openThreshold,
-    closeThreshold: settings.detection.closeThreshold,
+  stateRibbon($("#live-chart"), series, {
     res: liveRes,
-    emptyMsg: pipeline ? "Waiting for a face…" : "Start monitoring to see live feedback.",
+    emptyMsg: pipeline ? "Waiting for a face…" : "Start monitoring to see live state.",
   });
+}
+
+// Moving average of confirmed closed-span durations over the last hour.
+let closedSpans = []; // [{ t: endMs, dur }]
+
+function updateAvgClose() {
+  const cutoff = Date.now() - 3600_000;
+  closedSpans = closedSpans.filter((s) => s.t >= cutoff);
+  const txt = closedSpans.length
+    ? (closedSpans.reduce((a, s) => a + s.dur, 0) / closedSpans.length).toFixed(1) + "s"
+    : "—";
+  const a = $("#stat-avg-close");
+  const b = $("#ambient-metric");
+  if (a) a.textContent = txt;
+  if (b) b.textContent = txt;
+}
+
+// Distraction-free ambient tab: green = closed, red = open, gray = not detected.
+function updateAmbient(result) {
+  const amb = $("#ambient");
+  if (!amb) return;
+  const st = !result || !result.face ? "unknown" : result.state === "open" ? "open" : result.state === "closed" ? "closed" : "unknown";
+  amb.dataset.state = st;
+  $("#ambient-state").textContent = st === "open" ? "OPEN" : st === "closed" ? "CLOSED" : "NOT DETECTED";
 }
 
 function bumpMax(hk, val) {
@@ -210,6 +232,7 @@ async function startMonitoring() {
     btn.disabled = false;
     $("#status-dot").classList.add("live");
     $("#cal-hint").textContent = "Live — open and close your mouth to calibrate.";
+    $("#ambient-hint").textContent = "";
     toast("Monitoring started", "info");
   } catch (err) {
     console.error(err);
@@ -244,6 +267,8 @@ function stopMonitoring() {
   $("#cal-fill").style.width = "0%";
   resetNarMeter();
   renderLive();
+  updateAmbient(null);
+  $("#ambient-hint").textContent = "Start monitoring on the Monitor tab, then leave this tab open.";
 }
 
 function onFrame(result) {
@@ -252,8 +277,10 @@ function onFrame(result) {
 
   // Accumulate fine-grained (per-hour) activity for the stats store.
   accountFrame(result);
-  // Feed the live real-time trace.
-  liveTrace.push(Date.now(), result.lips ? result.lips.mar : null);
+  // Feed the live binary state trace + ambient tab (no usable face → gap/gray).
+  const liveState = result.face ? result.state : "unknown";
+  liveTrace.push(Date.now(), liveState);
+  updateAmbient(result);
 
   const indicator = $("#indicator");
   const mar = result.lips ? result.lips.mar.toFixed(3) : "—";
@@ -282,6 +309,11 @@ function onFrame(result) {
 
 function onChange(change) {
   if (uploader) uploader.enqueueChange(change);
+  // Feed the moving-average of closed-span durations.
+  if (change.fromState === "closed" && change.prevDuration > 0) {
+    closedSpans.push({ t: Date.now(), dur: change.prevDuration });
+    updateAvgClose();
+  }
   const list = $("#changes-list");
   const li = document.createElement("li");
   const t = new Date().toLocaleTimeString();
@@ -298,6 +330,7 @@ function refreshStats() {
   $("#stat-open-s").textContent = s.totalOpenSeconds.toFixed(0) + "s";
   $("#stat-closed-s").textContent = s.totalClosedSeconds.toFixed(0) + "s";
   $("#stat-face-rate").textContent = Math.round(s.faceDetectionRate * 100) + "%";
+  updateAvgClose(); // recompute so the 60-min window decays even without new spans
 }
 
 // ---- config --------------------------------------------------------------

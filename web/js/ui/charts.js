@@ -135,25 +135,26 @@ const hms = (ms) => { const d = new Date(ms); return `${p2(d.getHours())}:${p2(d
 const hm = (ms) => { const d = new Date(ms); return `${p2(d.getHours())}:${p2(d.getMinutes())}`; };
 
 /**
- * Rolling buffer of the last hour of MAR samples. Stores one aggregate per
- * second (mean of the frames in that second); the minute view is derived from
- * the same seconds, so nothing is stored twice.
+ * Rolling buffer of the last hour of open/closed state. Stores per-second frame
+ * counts of open vs closed; the minute view is derived from the same seconds.
+ * A bucket's reported state is its majority (ties → closed); no usable face → gap.
  */
 export class LiveTrace {
   constructor(capSeconds = 3600) {
     this.cap = capSeconds;
-    this.sec = []; // [{ s: epochSeconds, sum, n }]
+    this.sec = []; // [{ s: epochSeconds, open, closed }]
   }
   reset() {
     this.sec = [];
   }
-  push(ms, mar) {
+  push(ms, state) {
     const s = Math.floor(ms / 1000);
     const last = this.sec[this.sec.length - 1];
     if (last && last.s === s) {
-      if (mar != null) { last.sum += mar; last.n += 1; }
+      if (state === "open") last.open += 1;
+      else if (state === "closed") last.closed += 1;
     } else {
-      this.sec.push({ s, sum: mar != null ? mar : 0, n: mar != null ? 1 : 0 });
+      this.sec.push({ s, open: state === "open" ? 1 : 0, closed: state === "closed" ? 1 : 0 });
       if (this.sec.length > this.cap) this.sec.shift();
     }
   }
@@ -163,74 +164,59 @@ export class LiveTrace {
   seconds(windowSec = 90) {
     const from = this._nowS() - windowSec;
     return this.sec
-      .filter((e) => e.s >= from && e.n > 0)
-      .map((e) => ({ t: e.s * 1000, value: e.sum / e.n }));
+      .filter((e) => e.s >= from && e.open + e.closed > 0)
+      .map((e) => ({ t: e.s * 1000, state: e.open > e.closed ? "open" : "closed" }));
   }
   minutes(windowMin = 60) {
     const byMin = new Map();
     for (const e of this.sec) {
-      if (e.n === 0) continue;
+      if (e.open + e.closed === 0) continue;
       const m = Math.floor(e.s / 60);
-      const b = byMin.get(m) || { sum: 0, n: 0 };
-      b.sum += e.sum;
-      b.n += e.n;
+      const b = byMin.get(m) || { open: 0, closed: 0 };
+      b.open += e.open;
+      b.closed += e.closed;
       byMin.set(m, b);
     }
     const from = Math.floor(this._nowS() / 60) - windowMin;
     return [...byMin.entries()]
       .filter(([m]) => m >= from)
       .sort((a, b) => a[0] - b[0])
-      .map(([m, b]) => ({ t: m * 60000, value: b.sum / b.n }));
+      .map(([m, b]) => ({ t: m * 60000, state: b.open > b.closed ? "open" : "closed" }));
   }
 }
 
-/**
- * Real-time MAR strip with the open/close threshold lines drawn in, so the user
- * sees mouth-openness cross the thresholds live. No tooltip (updates ~2x/s).
- */
-export function liveChart(container, series, opts = {}) {
-  const openT = opts.openThreshold ?? 0.35;
-  const closeT = opts.closeThreshold ?? 0.28;
-  const xf = opts.res === "min" ? hm : hms;
+const STATE_COLOR = { open: "var(--open)", closed: "var(--closed)", unknown: "#556" };
 
+/**
+ * Binary open/closed state timeline as a colored ribbon over time (green =
+ * closed, red = open). Clearer real-time feedback than a continuous line.
+ */
+export function stateRibbon(container, series, opts = {}) {
+  const xf = opts.res === "min" ? hm : hms;
   if (!series.length) {
     container.innerHTML = `<div class="empty">${opts.emptyMsg || "Waiting for data…"}</div>`;
     return;
   }
-
-  const maxV = Math.max(...series.map((d) => d.value));
-  const yMax = Math.max(0.6, openT * 1.4, maxV * 1.15);
+  const unit = opts.res === "min" ? 60000 : 1000;
   const n = series.length;
-  const t0 = series[0].t, t1 = series[n - 1].t;
+  const t0 = series[0].t;
+  const t1 = series[n - 1].t + unit;
   const span = Math.max(1, t1 - t0);
-  const x = (t) => (n === 1 ? PAD.l + PLOT_W : PAD.l + ((t - t0) / span) * PLOT_W);
-  const y = (v) => PAD.t + PLOT_H - (Math.min(v, yMax) / yMax) * PLOT_H;
+  const x = (t) => PAD.l + ((t - t0) / span) * PLOT_W;
 
-  const gridY = [0, yMax]
-    .map((val) => {
-      const yy = y(val);
-      return `<line x1="${PAD.l}" y1="${yy}" x2="${W - PAD.r}" y2="${yy}" class="c-grid"/>
-              <text x="${PAD.l - 5}" y="${yy + 3}" class="c-axis" text-anchor="end">${val.toFixed(2)}</text>`;
-    })
-    .join("");
-
-  const thr = (val, cls, name) => {
-    const yy = y(val);
-    // Label at the left edge so it never collides with the last-value label.
-    return `<line x1="${PAD.l}" y1="${yy}" x2="${W - PAD.r}" y2="${yy}" class="${cls}"/>
-            <text x="${PAD.l + 3}" y="${yy - 3}" class="c-thr-lbl" text-anchor="start">${name}</text>`;
-  };
-  const thresholds = thr(openT, "c-thr-open", "open") + thr(closeT, "c-thr-close", "close");
-
-  const pts = series.map((d) => `${x(d.t)},${y(d.value)}`).join(" ");
-  const line = `<polyline points="${pts}" fill="none" stroke="var(--accent)" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>`;
-  const lastV = series[n - 1].value;
-  const lastLbl = `<text x="${W - PAD.r}" y="${Math.max(y(lastV) - 6, PAD.t + 9)}" class="c-label" text-anchor="end">${lastV.toFixed(2)}</text>`;
+  const top = PAD.t + 4;
+  const bandH = PLOT_H - 6;
+  let rects = "";
+  for (let i = 0; i < n; i++) {
+    const x0 = x(series[i].t);
+    const x1 = x(i + 1 < n ? series[i + 1].t : series[i].t + unit);
+    rects += `<rect x="${x0}" y="${top}" width="${Math.max(0.6, x1 - x0)}" height="${bandH}" fill="${STATE_COLOR[series[i].state] || STATE_COLOR.unknown}"/>`;
+  }
   const xLabels = `<text x="${PAD.l}" y="${H - 8}" class="c-axis" text-anchor="start">${xf(t0)}</text>
-                   <text x="${W - PAD.r}" y="${H - 8}" class="c-axis" text-anchor="end">${xf(t1)}</text>`;
+                   <text x="${W - PAD.r}" y="${H - 8}" class="c-axis" text-anchor="end">${xf(series[n - 1].t)}</text>`;
 
   container.innerHTML = `
-    <svg viewBox="0 0 ${W} ${H}" role="img" aria-label="live mouth openness">
-      ${gridY}${thresholds}${line}${lastLbl}${xLabels}
+    <svg viewBox="0 0 ${W} ${H}" role="img" aria-label="open/closed timeline">
+      ${rects}${xLabels}
     </svg>`;
 }

@@ -110,6 +110,24 @@ button.ghost { background: transparent; color: var(--muted); border: 1px solid v
 .tile span { display: block; font-size: 20px; font-weight: 700; }
 .tile label { color: var(--muted); font-size: 12px; }
 
+/* Ambient (distraction-free) Live tab */
+.ambient {
+  min-height: calc(100vh - 130px);
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  gap: 22px; border-radius: var(--radius); text-align: center; padding: 24px;
+  transition: background .5s ease;
+  background: var(--panel-2);
+}
+.ambient[data-state="closed"] { background: rgba(57, 217, 138, .22); }
+.ambient[data-state="open"] { background: rgba(255, 92, 122, .22); }
+.ambient[data-state="unknown"] { background: var(--panel-2); }
+.ambient-state { font-size: 46px; font-weight: 800; letter-spacing: 3px; color: var(--muted); }
+.ambient[data-state="closed"] .ambient-state { color: var(--closed); }
+.ambient[data-state="open"] .ambient-state { color: var(--open); }
+.ambient-metric span { display: block; font-size: 44px; font-weight: 800; }
+.ambient-metric label { color: var(--muted); font-size: 14px; }
+.ambient-hint { color: var(--muted); font-size: 13px; max-width: 280px; }
+
 .live-card { background: var(--panel); border: 1px solid var(--border); border-radius: var(--radius); padding: 14px; margin-top: 16px; }
 .live-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; margin-bottom: 6px; }
 .live-head h3 { margin: 0; }
