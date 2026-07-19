@@ -118,15 +118,13 @@ button.ghost { background: transparent; color: var(--muted); border: 1px solid v
   transition: background .5s ease;
   background: var(--panel-2);
 }
-.ambient[data-state="closed"] { background: rgba(57, 217, 138, .22); }
-.ambient[data-state="open"] { background: rgba(255, 92, 122, .22); }
-.ambient[data-state="unknown"] { background: var(--panel-2); }
-.ambient-state { font-size: 46px; font-weight: 800; letter-spacing: 3px; color: var(--muted); }
-.ambient[data-state="closed"] .ambient-state { color: var(--closed); }
-.ambient[data-state="open"] .ambient-state { color: var(--open); }
-.ambient-metric span { display: block; font-size: 44px; font-weight: 800; }
-.ambient-metric label { color: var(--muted); font-size: 14px; }
-.ambient-hint { color: var(--muted); font-size: 13px; max-width: 280px; }
+/* Strong, saturated background = peripheral attention; text stays soft/low-key. */
+.ambient[data-state="closed"] { background: var(--closed); }
+.ambient[data-state="open"] { background: var(--open); }
+.ambient[data-state="unknown"] { background: #4a5361; }
+.ambient-state { font-size: 46px; font-weight: 600; letter-spacing: 3px; color: rgba(255, 255, 255, .5); }
+.ambient-metric span { display: block; font-size: 38px; font-weight: 600; color: rgba(255, 255, 255, .5); }
+.ambient-hint { color: rgba(255, 255, 255, .5); font-size: 13px; max-width: 280px; }
 
 .live-card { background: var(--panel); border: 1px solid var(--border); border-radius: var(--radius); padding: 14px; margin-top: 16px; }
 .live-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; margin-bottom: 6px; }
