@@ -55,6 +55,26 @@ let wasTalking = false;
 // Biofeedback on/off scheduler + per-period accounting (baseline sampling).
 let bioOn = true; // is feedback (alerts + Live color) active right now
 let bioTimer = null;
+let wakeLock = null; // Screen Wake Lock sentinel (keeps the display on)
+
+async function requestWakeLock() {
+  try {
+    if ("wakeLock" in navigator) {
+      wakeLock = await navigator.wakeLock.request("screen");
+    }
+  } catch (e) {
+    console.warn("wake lock unavailable:", e.message);
+  }
+}
+
+function releaseWakeLock() {
+  try {
+    wakeLock && wakeLock.release();
+  } catch {
+    /* ignore */
+  }
+  wakeLock = null;
+}
 let periodStart = null;
 let periodKind = "on";
 let periodOpen = 0, periodClosed = 0, periodSpanSum = 0, periodSpanCount = 0;
@@ -453,6 +473,7 @@ async function startMonitoring() {
     $("#status-dot").classList.add("live");
     $("#cal-hint").textContent = "Live — open and close your mouth to calibrate.";
     $("#ambient-hint").textContent = "";
+    requestWakeLock(); // keep the screen on while monitoring
     toast("Monitoring started", "info");
   } catch (err) {
     console.error(err);
@@ -467,6 +488,7 @@ function stopMonitoring() {
   // Persist the final accumulated hourly activity before tearing down.
   flushAccounting();
   stopBioSchedule();
+  releaseWakeLock();
   if (rollupTimer) clearInterval(rollupTimer), (rollupTimer = null);
   if (statusTimer) clearInterval(statusTimer), (statusTimer = null);
   if (liveTimer) clearInterval(liveTimer), (liveTimer = null);
@@ -996,6 +1018,15 @@ function boot() {
   // Stop cleanly on unload so camera + uploads flush.
   window.addEventListener("pagehide", () => {
     if (uploader) uploader.flush(true);
+  });
+
+  // Stop monitoring when the app goes to the background (screen off / app
+  // switch); the browser suspends the camera there anyway.
+  document.addEventListener("visibilitychange", () => {
+    if (document.hidden && pipeline) {
+      stopMonitoring();
+      toast("Monitoring stopped — app went to the background.", "warn");
+    }
   });
 
   if (!window.isSecureContext) {
