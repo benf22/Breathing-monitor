@@ -39,6 +39,9 @@ export const DEFAULT_SETTINGS = Object.freeze({
     mouthOpenAlertSeconds: 20,
     // Periodic "take a breathing break" reminder; 0 disables.
     breathingReminderMinutes: 30,
+    // Send alerts to another device via ntfy.sh — a topic name (or full URL).
+    // Blank = off. Subscribe to the same topic on your laptop for popups.
+    remoteTopic: "",
   },
   baseline: {
     // Periodically pause biofeedback to sample the user's unbiased "baseline"

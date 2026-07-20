@@ -385,6 +385,14 @@ const MAR_SCALE = 1.0; // meter/threshold display range (MAR is ~0..0.8+)
 const round2 = (v) => Math.round(v * 100) / 100;
 const marPct = (v) => Math.max(0, Math.min(100, (v / MAR_SCALE) * 100));
 
+// ---- remote alerts (cross-device via ntfy.sh) ----------------------------
+function remoteSend(text) {
+  const topic = (settings.notifications.remoteTopic || "").trim();
+  if (!topic) return;
+  const url = /^https?:\/\//.test(topic) ? topic : `https://ntfy.sh/${encodeURIComponent(topic)}`;
+  fetch(url, { method: "POST", body: text }).catch((e) => console.warn("remote alert:", e.message));
+}
+
 // ---- toast ---------------------------------------------------------------
 function toast(msg, level = "info") {
   const wrap = $("#toasts");
@@ -430,7 +438,7 @@ async function startMonitoring() {
       { talking: { ...settings.talking } }
     );
 
-    notifier = new Notifier(settings.notifications, toast);
+    notifier = new Notifier(settings.notifications, toast, remoteSend);
     if (settings.notifications.enabled) await notifier.requestPermission();
 
     currentSessionId = newSessionId();
@@ -630,6 +638,7 @@ function populateConfigForm() {
   set("notifEnabled", settings.notifications.enabled);
   set("mouthOpenAlertSeconds", settings.notifications.mouthOpenAlertSeconds);
   set("breathingReminderMinutes", settings.notifications.breathingReminderMinutes);
+  set("remoteTopic", settings.notifications.remoteTopic);
   set("baselineEnabled", settings.baseline.enabled);
   set("baselineOn", settings.baseline.onMinutes);
   set("baselineOff", settings.baseline.offMinutes);
@@ -674,6 +683,7 @@ function bindConfigForm() {
         enabled: f.notifEnabled.checked,
         mouthOpenAlertSeconds: num(f.mouthOpenAlertSeconds),
         breathingReminderMinutes: num(f.breathingReminderMinutes),
+        remoteTopic: f.remoteTopic.value.trim(),
       },
       cloud: {
         ...settings.cloud,
@@ -700,6 +710,14 @@ function bindConfigForm() {
     }
     refreshCalibrateUI();
     toast("Settings saved" + (pipeline ? " — restart monitoring to apply capture changes" : ""), "info");
+  });
+
+  $("#notif-test-remote").addEventListener("click", () => {
+    const topic = $("#config-form").elements.remoteTopic.value.trim();
+    if (!topic) return toast("Enter a topic first (and save).", "warn");
+    settings.notifications.remoteTopic = topic;
+    remoteSend("Breathing Monitor: test alert ✅");
+    toast("Test alert sent to " + topic, "info");
   });
 
   $("#config-reset").addEventListener("click", () => {

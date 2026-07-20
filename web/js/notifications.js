@@ -17,9 +17,15 @@ export class Notifier {
    * @param {Object} cfg notifications settings block
    * @param {(msg:string, level?:string)=>void} toast in-page toast callback
    */
-  constructor(cfg, toast) {
+  /**
+   * @param {Object} cfg notifications settings block
+   * @param {(msg:string, level?:string)=>void} toast in-page toast callback
+   * @param {(text:string)=>void} [remote] optional cross-device sender (ntfy)
+   */
+  constructor(cfg, toast, remote) {
     this.cfg = cfg;
     this.toast = toast;
+    this.remote = remote;
     this._openAlertFired = false;
     this._lastReminder = Date.now();
   }
@@ -53,6 +59,13 @@ export class Notifier {
   notify(title, body, level = "info") {
     this.toast(`${title} — ${body}`, level);
     this._system(title, body);
+    if (this.remote) {
+      try {
+        this.remote(`${title}: ${body}`);
+      } catch {
+        /* best effort */
+      }
+    }
   }
 
   /** Called on every pipeline frame with the current smoothed state + duration. */
