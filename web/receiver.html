@@ -55,7 +55,7 @@
       <strong>Recent alerts</strong>
       <ul id="log"></ul>
     </div>
-    <p class="muted">No OS popups by default — the cue is a color. On an alert the icon turns <b style="color:#ff5c7a">red</b> and stays red until you click back. <b>Install</b> this page (browser menu → Install) so a red badge shows on its <b>taskbar/dock icon</b> even when the window is hidden. (Enable “OS popup” only if you also want a system notification.)</p>
+    <p class="muted">No OS popups by default. In a browser tab the <b>tab icon turns red</b> on an alert (stays red until you click back). Installed, the taskbar/dock icon gets a small badge dot — but note the browser controls its color, so it isn't red. <b>To get a truly red taskbar icon, run the native tray app</b> in <code>desktop/</code> (see its README) — it's the only way a color-changing icon is possible.</p>
   </div>
 
   <div id="flash"><div class="msg" id="flash-msg">ALERT<small id="flash-sub"></small></div></div>
@@ -126,7 +126,9 @@
     function raiseFlag(msg) {
       setFavicon(COLOR_ALERT);
       document.title = "🔴 " + msg;
-      try { navigator.setAppBadge && navigator.setAppBadge(1); } catch (e) {}
+      // A dot badge (no number). Note: the browser controls its color (system
+      // accent) — the web platform can't recolor the taskbar icon itself.
+      try { navigator.setAppBadge && navigator.setAppBadge(); } catch (e) {}
     }
     function clearFlag() {
       setFavicon(COLOR_OK);
