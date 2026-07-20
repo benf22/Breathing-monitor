@@ -1,0 +1,152 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Breathing Monitor — Alerts Receiver</title>
+  <style>
+    :root { --bg:#0f1420; --panel:#171d2b; --panel2:#1f273a; --text:#e7ecf5; --muted:#93a0b8; --accent:#5b8cff; --open:#ff5c7a; --border:#2a3346; }
+    * { box-sizing: border-box; }
+    body { margin:0; background:var(--bg); color:var(--text); font:15px/1.5 system-ui,-apple-system,Segoe UI,Roboto,sans-serif; }
+    .wrap { max-width:560px; margin:0 auto; padding:24px 16px; }
+    h1 { font-size:20px; }
+    .card { background:var(--panel); border:1px solid var(--border); border-radius:14px; padding:16px; margin-bottom:16px; }
+    label { display:block; color:var(--muted); font-size:14px; margin:10px 0 4px; }
+    input[type=text] { width:100%; padding:10px; border-radius:8px; border:1px solid var(--border); background:var(--panel2); color:var(--text); }
+    .row { display:flex; gap:10px; align-items:center; flex-wrap:wrap; }
+    button { background:var(--accent); color:#fff; border:0; padding:10px 16px; border-radius:10px; font-size:15px; cursor:pointer; }
+    button.ghost { background:transparent; color:var(--muted); border:1px solid var(--border); }
+    .status { font-size:13px; color:var(--muted); margin-top:10px; }
+    .status.on { color:#39d98a; }
+    .status.err { color:var(--open); }
+    ul { list-style:none; padding:0; margin:8px 0 0; max-height:240px; overflow:auto; }
+    li { padding:8px 4px; border-bottom:1px solid var(--border); font-size:14px; }
+    li time { color:var(--muted); font-size:12px; margin-right:8px; font-family:ui-monospace,monospace; }
+    .muted { color:var(--muted); font-size:13px; }
+    /* Full-screen attention flash */
+    #flash { position:fixed; inset:0; background:var(--open); display:flex; align-items:center; justify-content:center;
+             opacity:0; pointer-events:none; transition:opacity .12s; z-index:50; }
+    #flash.on { opacity:.92; pointer-events:auto; }
+    #flash .msg { font-size:min(9vw,54px); font-weight:800; color:#2a0d14; text-align:center; padding:20px; }
+    #flash small { display:block; font-size:16px; font-weight:600; margin-top:14px; opacity:.7; }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <h1>Breathing Monitor — Alerts Receiver</h1>
+    <p class="muted">Open this on your laptop and connect to the same topic you set on the phone.
+       Each alert flashes the screen, beeps, and shows a sticky notification.</p>
+
+    <div class="card">
+      <label for="topic">ntfy topic (must match the phone)</label>
+      <input id="topic" type="text" placeholder="e.g. breath-a8f3k9" autocomplete="off" />
+      <div class="row" style="margin-top:12px">
+        <button id="connect">Connect</button>
+        <button id="test" class="ghost" type="button">Test flash</button>
+        <label class="row" style="margin:0"><input type="checkbox" id="sound" checked /> &nbsp;Sound</label>
+      </div>
+      <div id="status" class="status">Not connected.</div>
+    </div>
+
+    <div class="card">
+      <strong>Recent alerts</strong>
+      <ul id="log"></ul>
+    </div>
+    <p class="muted">Keep this tab open. For always-on popups without a tab, use the ntfy desktop app subscribed to the same topic.</p>
+  </div>
+
+  <div id="flash"><div class="msg" id="flash-msg">ALERT<small id="flash-sub"></small></div></div>
+
+  <script>
+    const $ = (s) => document.querySelector(s);
+    const params = new URLSearchParams(location.search);
+    const topicEl = $("#topic");
+    topicEl.value = params.get("topic") || localStorage.getItem("bm.recv.topic") || "";
+
+    let es = null;
+    let audioCtx = null;
+
+    function setStatus(text, cls) {
+      const el = $("#status");
+      el.textContent = text;
+      el.className = "status" + (cls ? " " + cls : "");
+    }
+
+    function beep() {
+      if (!$("#sound").checked) return;
+      try {
+        audioCtx = audioCtx || new (window.AudioContext || window.webkitAudioContext)();
+        const t = audioCtx.currentTime;
+        for (let i = 0; i < 2; i++) {
+          const o = audioCtx.createOscillator();
+          const g = audioCtx.createGain();
+          o.type = "sine";
+          o.frequency.value = 880;
+          g.gain.setValueAtTime(0.0001, t + i * 0.28);
+          g.gain.exponentialRampToValueAtTime(0.4, t + i * 0.28 + 0.02);
+          g.gain.exponentialRampToValueAtTime(0.0001, t + i * 0.28 + 0.22);
+          o.connect(g).connect(audioCtx.destination);
+          o.start(t + i * 0.28);
+          o.stop(t + i * 0.28 + 0.24);
+        }
+      } catch (e) { /* ignore */ }
+    }
+
+    let titleTimer = null;
+    const baseTitle = document.title;
+    function flashTitle(msg) {
+      let on = true, n = 0;
+      clearInterval(titleTimer);
+      titleTimer = setInterval(() => {
+        document.title = on ? "⚠️ " + msg : baseTitle;
+        on = !on;
+        if (++n > 12) { clearInterval(titleTimer); document.title = baseTitle; }
+      }, 500);
+    }
+
+    function alertNow(msg) {
+      // Full-screen flash
+      $("#flash-sub").textContent = msg;
+      const f = $("#flash");
+      f.classList.add("on");
+      setTimeout(() => f.classList.remove("on"), 1600);
+      beep();
+      flashTitle(msg);
+      // Sticky OS notification
+      if ("Notification" in window && Notification.permission === "granted") {
+        try { new Notification("Breathing Monitor", { body: msg, requireInteraction: true, tag: "bm-alert" }); } catch (e) {}
+      }
+      // Log
+      const li = document.createElement("li");
+      li.innerHTML = `<time>${new Date().toLocaleTimeString()}</time>${msg}`;
+      $("#log").prepend(li);
+      while ($("#log").children.length > 30) $("#log").lastChild.remove();
+    }
+    // Dismiss the flash on click.
+    $("#flash").addEventListener("click", () => $("#flash").classList.remove("on"));
+
+    function connect() {
+      const topic = topicEl.value.trim();
+      if (!topic) { setStatus("Enter a topic first.", "err"); return; }
+      localStorage.setItem("bm.recv.topic", topic);
+      if (es) es.close();
+      if ("Notification" in window && Notification.permission === "default") Notification.requestPermission();
+      const url = /^https?:\/\//.test(topic) ? topic.replace(/\/$/, "") + "/sse" : `https://ntfy.sh/${encodeURIComponent(topic)}/sse`;
+      setStatus("Connecting…");
+      es = new EventSource(url);
+      es.onopen = () => setStatus("Connected — waiting for alerts.", "on");
+      es.onerror = () => setStatus("Disconnected — retrying…", "err");
+      es.onmessage = (ev) => {
+        try {
+          const d = JSON.parse(ev.data);
+          if (d.event === "message") alertNow(d.message || "(alert)");
+        } catch (e) { /* keepalive/open events */ }
+      };
+    }
+
+    $("#connect").addEventListener("click", connect);
+    $("#test").addEventListener("click", () => alertNow("Test alert — mouth open"));
+    if (topicEl.value) connect();
+  </script>
+</body>
+</html>
