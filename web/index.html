@@ -284,9 +284,10 @@
           <label>Remote alerts topic (ntfy.sh) — popups on another device
             <input name="remoteTopic" type="text" placeholder="e.g. breath-a8f3k9 (keep secret)" />
           </label>
-          <p class="muted small">Pick a hard-to-guess topic, then on your laptop
-             open <b>ntfy.sh/&lt;topic&gt;</b> (or the ntfy app) and allow
-             notifications. Alerts from this phone will pop up there.</p>
+          <p class="muted small">Pick a hard-to-guess topic. On your laptop, open
+             <a id="recv-link" target="_blank" rel="noopener">the alerts receiver</a>
+             (big flash + beep), or just <b>ntfy.sh/&lt;topic&gt;</b> / the ntfy
+             app for plain notifications.</p>
           <button type="button" id="notif-test-remote" class="ghost">Send test remote alert</button>
         </fieldset>
 

@@ -2,12 +2,13 @@
 // offline. The MediaPipe WASM/model and API calls are network-first (with a
 // runtime cache) since they're large / dynamic.
 
-const SHELL_CACHE = "bm-shell-v20";
+const SHELL_CACHE = "bm-shell-v21";
 const RUNTIME_CACHE = "bm-runtime-v1";
 
 const SHELL = [
   "./",
   "./index.html",
+  "./receiver.html",
   "./manifest.webmanifest",
   "./css/app.css",
   "./icons/icon.svg",

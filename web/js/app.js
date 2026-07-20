@@ -639,6 +639,12 @@ function populateConfigForm() {
   set("mouthOpenAlertSeconds", settings.notifications.mouthOpenAlertSeconds);
   set("breathingReminderMinutes", settings.notifications.breathingReminderMinutes);
   set("remoteTopic", settings.notifications.remoteTopic);
+  const recv = $("#recv-link");
+  if (recv) {
+    const base = location.href.replace(/[^/]*$/, "");
+    const topic = (settings.notifications.remoteTopic || "").trim();
+    recv.href = base + "receiver.html" + (topic ? "?topic=" + encodeURIComponent(topic) : "");
+  }
   set("baselineEnabled", settings.baseline.enabled);
   set("baselineOn", settings.baseline.onMinutes);
   set("baselineOff", settings.baseline.offMinutes);
