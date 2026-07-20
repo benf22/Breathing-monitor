@@ -4,6 +4,8 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Breathing Monitor — Alerts Receiver</title>
+  <link rel="manifest" href="./receiver.webmanifest" />
+  <link id="fav" rel="icon" />
   <style>
     :root { --bg:#0f1420; --panel:#171d2b; --panel2:#1f273a; --text:#e7ecf5; --muted:#93a0b8; --accent:#5b8cff; --open:#ff5c7a; --border:#2a3346; }
     * { box-sizing: border-box; }
@@ -52,7 +54,7 @@
       <strong>Recent alerts</strong>
       <ul id="log"></ul>
     </div>
-    <p class="muted">Keep this tab open. For always-on popups without a tab, use the ntfy desktop app subscribed to the same topic.</p>
+    <p class="muted">On an alert the tab icon turns <b style="color:#ff5c7a">red</b> and stays red until you click back — a color cue with no popup. For a cue even when the window is hidden: <b>install</b> this page (browser menu → Install / Add to Dock) so its taskbar/dock icon shows a red badge; keeping it as a <b>pinned tab</b> or a thin window on the side also works.</p>
   </div>
 
   <div id="flash"><div class="msg" id="flash-msg">ALERT<small id="flash-sub"></small></div></div>
@@ -92,31 +94,54 @@
       } catch (e) { /* ignore */ }
     }
 
-    let titleTimer = null;
     const baseTitle = document.title;
-    function flashTitle(msg) {
-      let on = true, n = 0;
-      clearInterval(titleTimer);
-      titleTimer = setInterval(() => {
-        document.title = on ? "⚠️ " + msg : baseTitle;
-        on = !on;
-        if (++n > 12) { clearInterval(titleTimer); document.title = baseTitle; }
-      }, 500);
+    const favLink = document.getElementById("fav");
+
+    // Draw a solid colored dot as the tab favicon — a peripheral color signal
+    // visible in the tab strip (and taskbar/dock icon) without any popup.
+    function setFavicon(color) {
+      const c = document.createElement("canvas");
+      c.width = c.height = 64;
+      const x = c.getContext("2d");
+      x.fillStyle = color;
+      x.beginPath();
+      x.arc(32, 32, 30, 0, Math.PI * 2);
+      x.fill();
+      favLink.href = c.toDataURL("image/png");
     }
+    const COLOR_OK = "#39d98a", COLOR_ALERT = "#ff5c7a";
+    setFavicon(COLOR_OK);
+
+    // Alert stays "flagged" (red tab + red badge + flagged title) until you
+    // return to the tab, so an unfocused/hidden tab still shows the color.
+    function raiseFlag(msg) {
+      setFavicon(COLOR_ALERT);
+      document.title = "🔴 " + msg;
+      try { navigator.setAppBadge && navigator.setAppBadge(1); } catch (e) {}
+    }
+    function clearFlag() {
+      setFavicon(COLOR_OK);
+      document.title = baseTitle;
+      try { navigator.clearAppBadge && navigator.clearAppBadge(); } catch (e) {}
+    }
+    // Clear the flag once the user actually looks at the tab.
+    window.addEventListener("focus", clearFlag);
+    document.addEventListener("visibilitychange", () => { if (!document.hidden) clearFlag(); });
 
     function alertNow(msg) {
-      // Full-screen flash
+      // Full-screen flash (visible when the tab is on-screen).
       $("#flash-sub").textContent = msg;
       const f = $("#flash");
       f.classList.add("on");
       setTimeout(() => f.classList.remove("on"), 1600);
       beep();
-      flashTitle(msg);
-      // Sticky OS notification
+      // Persistent color signal for when the tab isn't focused.
+      raiseFlag(msg);
+      // Sticky OS notification.
       if ("Notification" in window && Notification.permission === "granted") {
         try { new Notification("Breathing Monitor", { body: msg, requireInteraction: true, tag: "bm-alert" }); } catch (e) {}
       }
-      // Log
+      // Log.
       const li = document.createElement("li");
       li.innerHTML = `<time>${new Date().toLocaleTimeString()}</time>${msg}`;
       $("#log").prepend(li);
@@ -124,6 +149,10 @@
     }
     // Dismiss the flash on click.
     $("#flash").addEventListener("click", () => $("#flash").classList.remove("on"));
+
+    // Register the service worker so the receiver is installable (enables the
+    // taskbar/dock badge and a standalone window).
+    if ("serviceWorker" in navigator) navigator.serviceWorker.register("./sw.js").catch(() => {});
 
     function connect() {
       const topic = topicEl.value.trim();
