@@ -46,6 +46,7 @@
         <button id="connect">Connect</button>
         <button id="test" class="ghost" type="button">Test flash</button>
         <label class="row" style="margin:0"><input type="checkbox" id="sound" checked /> &nbsp;Sound</label>
+        <label class="row" style="margin:0"><input type="checkbox" id="popup" /> &nbsp;OS popup</label>
       </div>
       <div id="status" class="status">Not connected.</div>
     </div>
@@ -54,7 +55,7 @@
       <strong>Recent alerts</strong>
       <ul id="log"></ul>
     </div>
-    <p class="muted">On an alert the tab icon turns <b style="color:#ff5c7a">red</b> and stays red until you click back — a color cue with no popup. For a cue even when the window is hidden: <b>install</b> this page (browser menu → Install / Add to Dock) so its taskbar/dock icon shows a red badge; keeping it as a <b>pinned tab</b> or a thin window on the side also works.</p>
+    <p class="muted">No OS popups by default — the cue is a color. On an alert the icon turns <b style="color:#ff5c7a">red</b> and stays red until you click back. <b>Install</b> this page (browser menu → Install) so a red badge shows on its <b>taskbar/dock icon</b> even when the window is hidden. (Enable “OS popup” only if you also want a system notification.)</p>
   </div>
 
   <div id="flash"><div class="msg" id="flash-msg">ALERT<small id="flash-sub"></small></div></div>
@@ -67,6 +68,14 @@
 
     let es = null;
     let audioCtx = null;
+
+    // OS popup is OFF by default (the taskbar badge + red icon is the cue).
+    const popupEl = $("#popup");
+    popupEl.checked = localStorage.getItem("bm.recv.popup") === "1";
+    popupEl.addEventListener("change", () => {
+      localStorage.setItem("bm.recv.popup", popupEl.checked ? "1" : "0");
+      if (popupEl.checked && "Notification" in window && Notification.permission === "default") Notification.requestPermission();
+    });
 
     function setStatus(text, cls) {
       const el = $("#status");
@@ -137,8 +146,8 @@
       beep();
       // Persistent color signal for when the tab isn't focused.
       raiseFlag(msg);
-      // Sticky OS notification.
-      if ("Notification" in window && Notification.permission === "granted") {
+      // Sticky OS notification — only if explicitly enabled.
+      if (popupEl.checked && "Notification" in window && Notification.permission === "granted") {
         try { new Notification("Breathing Monitor", { body: msg, requireInteraction: true, tag: "bm-alert" }); } catch (e) {}
       }
       // Log.
@@ -159,7 +168,7 @@
       if (!topic) { setStatus("Enter a topic first.", "err"); return; }
       localStorage.setItem("bm.recv.topic", topic);
       if (es) es.close();
-      if ("Notification" in window && Notification.permission === "default") Notification.requestPermission();
+      if (popupEl.checked && "Notification" in window && Notification.permission === "default") Notification.requestPermission();
       const url = /^https?:\/\//.test(topic) ? topic.replace(/\/$/, "") + "/sse" : `https://ntfy.sh/${encodeURIComponent(topic)}/sse`;
       setStatus("Connecting…");
       es = new EventSource(url);
