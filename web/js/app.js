@@ -641,9 +641,13 @@ function populateConfigForm() {
   set("remoteTopic", settings.notifications.remoteTopic);
   const recv = $("#recv-link");
   if (recv) {
-    const base = location.href.replace(/[^/]*$/, "");
     const topic = (settings.notifications.remoteTopic || "").trim();
-    recv.href = base + "receiver.html" + (topic ? "?topic=" + encodeURIComponent(topic) : "");
+    // Resolve relative to the current document so it works whether the URL ends
+    // in /, /index.html, or has a #hash.
+    const url = new URL("receiver.html", location.href);
+    if (topic) url.searchParams.set("topic", topic);
+    recv.href = url.href;
+    recv.textContent = url.href.replace(/^https?:\/\//, "");
   }
   set("baselineEnabled", settings.baseline.enabled);
   set("baselineOn", settings.baseline.onMinutes);
