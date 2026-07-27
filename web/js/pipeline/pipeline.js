@@ -120,6 +120,7 @@ export class Pipeline {
         : null,
       lips,
       nose,
+      blendshapes: frame.blendshapes || null,
       talking,
       talkingScore: this.talkingDetector.score,
       rawState,

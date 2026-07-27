@@ -183,6 +183,20 @@
             <input id="talk-hold" type="number" min="0" step="0.05" />
           </label>
         </div>
+
+        <hr class="sep" />
+
+        <h2>Facial tension <span class="tag-exp">experimental</span></h2>
+        <p class="muted">A webcam <b>can't measure true muscle tone</b> (that needs
+           EMG). These bars are MediaPipe <b>blendshapes</b> — geometric estimates
+           of facial actions, 0–1. Tense each muscle group and watch which bars
+           move. The signal is the <em>rise above your own relaxed resting
+           level</em>, not the absolute value — so compare against your neutral
+           face. Heads-up: <b>jaw clench barely registers</b> from a camera; watch
+           whether its proxies move for you at all before relying on it.</p>
+        <div id="bs-list" class="bs-list">
+          <p class="muted small" id="bs-empty">Start monitoring on the Monitor tab to see live blendshapes.</p>
+        </div>
       </div>
     </section>
 

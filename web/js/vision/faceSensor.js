@@ -14,6 +14,7 @@
 //       hasFace,                 // false when the frame was gated out
 //       landmarks | null,        // number[][] normalized [x,y,z]
 //       bbox | null,
+//       blendshapes | null,      // {categoryName: score} ARKit action units (0..1)
 //       aspectRatio,             // videoWidth / videoHeight
 //     }
 //
@@ -158,6 +159,7 @@ export class FaceSensor {
         hasFace: face !== null,
         landmarks: face ? face.landmarks : null,
         bbox: face ? face.bbox : null,
+        blendshapes: face ? face.blendshapes : null,
         aspectRatio,
       });
     } catch (err) {

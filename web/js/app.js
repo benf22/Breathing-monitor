@@ -523,6 +523,7 @@ function stopMonitoring() {
   $("#cal-state").textContent = "—";
   $("#cal-fill").style.width = "0%";
   resetNarMeter();
+  resetTensionMeter();
   renderLiveViews();
   resetAmbientColor();
   updateAmbient(null);
@@ -583,6 +584,9 @@ function onFrame(result) {
   // Talking-detection live readout (for the Calibrate tab).
   $("#talk-score").textContent = result.talkingScore != null ? result.talkingScore.toFixed(1) : "—";
   $("#talk-state").textContent = result.talking ? "TALKING" : "quiet";
+
+  // Facial-tension blendshape meter (experiment).
+  updateTensionMeter(result.blendshapes);
 
   // Alerts: suppressed while ignored OR during a baseline (feedback off); the
   // open-alert uses the ignore-gated continuous open-run duration.
@@ -851,6 +855,80 @@ function resetNarMeter() {
     $("#nar-value").textContent = "—";
     $("#nar-amp").textContent = "—";
     $("#nar-fill").style.width = "0%";
+  }
+}
+
+// ---- facial-tension blendshape meter (Calibrate experiment) --------------
+// Curated subset of the 52 MediaPipe blendshapes that plausibly reflect facial
+// tension, grouped by the muscle regions of interest. "Jaw clench" has no direct
+// blendshape — a camera can't see isometric masseter load — so we show the weak
+// geometric proxies and label the group honestly.
+const TENSION_BLENDSHAPES = [
+  { group: "Brow / frown", keys: [
+    ["browDownLeft", "Brow down (L)"], ["browDownRight", "Brow down (R)"],
+    ["browInnerUp", "Brow inner up"],
+  ] },
+  { group: "Eye / squint", keys: [
+    ["eyeSquintLeft", "Eye squint (L)"], ["eyeSquintRight", "Eye squint (R)"],
+    ["cheekSquintLeft", "Cheek squint (L)"], ["cheekSquintRight", "Cheek squint (R)"],
+  ] },
+  { group: "Lip / mouth press", keys: [
+    ["mouthPressLeft", "Lip press (L)"], ["mouthPressRight", "Lip press (R)"],
+    ["mouthPucker", "Lip pucker"], ["noseSneerLeft", "Nose sneer (L)"],
+    ["noseSneerRight", "Nose sneer (R)"],
+  ] },
+  { group: "Jaw clench", note: "weak — camera can't see clenching directly", keys: [
+    ["jawForward", "Jaw forward"], ["jawLeft", "Jaw left"], ["jawRight", "Jaw right"],
+    ["mouthShrugLower", "Mouth shrug (lower)"],
+  ] },
+];
+let bsBuilt = false;
+const HOT = 0.35; // highlight a bar once it climbs past this
+
+function buildTensionRows() {
+  const host = $("#bs-list");
+  if (!host) return;
+  host.innerHTML = "";
+  for (const { group, note, keys } of TENSION_BLENDSHAPES) {
+    const h = document.createElement("div");
+    h.className = "bs-group";
+    h.innerHTML = note ? `${group} <span class="bs-note">— ${note}</span>` : group;
+    host.appendChild(h);
+    for (const [key, label] of keys) {
+      const row = document.createElement("div");
+      row.className = "bs-row";
+      row.dataset.key = key;
+      row.innerHTML =
+        `<label>${label}</label>` +
+        `<div class="bs-track"><div class="bs-fill"></div></div>` +
+        `<span class="bs-val">—</span>`;
+      host.appendChild(row);
+    }
+  }
+  bsBuilt = true;
+}
+
+function updateTensionMeter(bs) {
+  const host = $("#bs-list");
+  if (!host) return;
+  if (!bs) return; // keep last values on a gated/faceless frame
+  if (!bsBuilt) buildTensionRows();
+  for (const row of host.querySelectorAll(".bs-row")) {
+    const v = bs[row.dataset.key];
+    const s = typeof v === "number" ? v : 0;
+    row.querySelector(".bs-fill").style.width = (s * 100).toFixed(0) + "%";
+    row.querySelector(".bs-val").textContent = s.toFixed(2);
+    row.classList.toggle("hot", s >= HOT);
+  }
+}
+
+function resetTensionMeter() {
+  const host = $("#bs-list");
+  if (!host || !bsBuilt) return;
+  for (const row of host.querySelectorAll(".bs-row")) {
+    row.querySelector(".bs-fill").style.width = "0%";
+    row.querySelector(".bs-val").textContent = "—";
+    row.classList.remove("hot");
   }
 }
 

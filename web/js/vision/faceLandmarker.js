@@ -50,7 +50,7 @@ export class FaceLandmarkerEngine {
       minFaceDetectionConfidence: this.minFaceConfidence,
       minFacePresenceConfidence: this.minFaceConfidence,
       minTrackingConfidence: this.minFaceConfidence,
-      outputFaceBlendshapes: false,
+      outputFaceBlendshapes: true, // 52 ARKit-style action coefficients (tension proxy)
       outputFacialTransformationMatrixes: false,
     });
     // Prefer GPU; fall back to CPU on devices/browsers that reject the delegate.
@@ -77,20 +77,31 @@ export class FaceLandmarkerEngine {
     let bestPoints = null;
     let bestBbox = null;
     let bestArea = -1.0;
-    for (const landmarks of faces) {
-      const points = landmarks.map((lm) => [lm.x, lm.y, lm.z]);
+    let bestIdx = -1;
+    for (let i = 0; i < faces.length; i++) {
+      const points = faces[i].map((lm) => [lm.x, lm.y, lm.z]);
       const bbox = bboxFromPoints(points);
       if (bbox.area > bestArea) {
         bestArea = bbox.area;
         bestPoints = points;
         bestBbox = bbox;
+        bestIdx = i;
       }
     }
 
     // Size gate: ignore faces whose box is too small a fraction of the frame (2a).
     if (bestBbox.area < this.minFaceAreaRatio) return null;
 
-    return { bbox: bestBbox, landmarks: bestPoints, confidence: 1.0 };
+    // Blendshapes for the selected face: {categoryName: score} in [0,1].
+    // Optional (null if the model wasn't asked for them or none were produced).
+    let blendshapes = null;
+    const bsList = result.faceBlendshapes;
+    if (bsList && bsList[bestIdx] && bsList[bestIdx].categories) {
+      blendshapes = {};
+      for (const c of bsList[bestIdx].categories) blendshapes[c.categoryName] = c.score;
+    }
+
+    return { bbox: bestBbox, landmarks: bestPoints, confidence: 1.0, blendshapes };
   }
 
   close() {
